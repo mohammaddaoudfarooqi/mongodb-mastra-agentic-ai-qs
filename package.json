@@ -8,7 +8,8 @@
     "test:watch": "vitest",
     "dev": "tsx src/server/app.ts",
     "provision": "tsx scripts/provision-and-seed.ts",
-    "seed": "tsx scripts/provision-and-seed.ts"
+    "seed": "tsx scripts/provision-and-seed.ts",
+    "eval": "tsx scripts/eval.ts"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "latest",
