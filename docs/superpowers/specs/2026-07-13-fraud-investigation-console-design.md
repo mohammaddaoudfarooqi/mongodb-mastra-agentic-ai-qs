@@ -246,9 +246,12 @@ rerank, memory, suspend/resume, safe data-query tool, cache, AWS/Terraform deplo
 governance + audit MongoDB layer near-verbatim from the governance engine; carry the vector index
 config + layered-decision pattern + regression-fence discipline from the Temporal app.
 
-**Name:** TBD — deferred. Keep the app name **configurable** (a single config/env value, surfaced
-in the UI top bar and package metadata) so it can be set later without code changes. Must be
-neutral — no partner or loaded terms. Do **not** hardcode a product name anywhere.
+**Name:** **Marshal** (working name). Names the operator's core act — to *marshal* evidence
+(gather and order the retrieval/graph/memory signals into a case) and a *marshal* who adjudicates
+the verdict; centers the human-gated decision, not surveillance. Reads cleanly in the control-room
+top bar: `MARSHAL ● INVESTIGATING`. Keep it **configurable** regardless (a single config/env value,
+surfaced in the UI top bar and package metadata) so it can be changed later without code changes —
+do **not** hardcode the product name anywhere.
 
 ---
 
