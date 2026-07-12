@@ -788,3 +788,26 @@ Expected: logs `server supports $rankFusion`, `transactions vector index ready`,
 **Type consistency:** `EmbedFn` defined in Task 4 and reused in Task 6; `DECIDED_STATUSES`/`LANES`/index-name constants defined in Task 1 and imported everywhere; `seedTransactions(col, embed)` / `runSearchSelfCheck(db, embed, opts?)` signatures match their call sites in Task 5. ✓
 
 **Assumption to verify at execution time:** the package manager is `pnpm` (sibling app uses it) and `getQueryEmbedder(cfg)` / `logger` / `loadConfig` exist in this repo once the base scaffolding is copied from the sibling app. If the base scaffolding is not yet present, a Task 0 (copy `src/config.ts`, `src/observability/logger.ts`, `src/mastra/embed.ts` from the sibling app and adapt) must run first.
+
+---
+
+## Execution Notes (post-implementation corrections)
+
+Two things changed during execution vs. the tasks above; the shipped code reflects these:
+
+1. **Vector index is created directly on `transactions`, not via `MongoDBVector`.** Task 3's original
+   `provisionTransactionVectorIndex(v: MongoDBVector)` used the Mastra vector adapter's
+   `createIndex`, which creates a *separate managed collection* (`transactions_vector_index`) and
+   stores vectors there — so a `$vectorSearch` probe against the operational `transactions`
+   collection returned 0 hits (the self-check caught this). Fixed: `provisionTransactionVectorIndex(db: Db)`
+   now calls the driver's `col.createSearchIndex({ type: 'vectorSearch', definition: { fields: [
+   { type: 'vector', path: 'embedding', numDimensions: 1024, similarity: 'cosine' },
+   { type: 'filter', path: 'status' } ] } })` **on the `transactions` collection itself** and polls
+   until queryable. This is the correct "same documents, one collection" approach (matches the
+   cookbook) and removes the `@mastra/mongodb` dependency from provisioning.
+2. **The self-check retries BOTH probes.** Atlas vector and search indexes are both eventually
+   consistent after a fresh (re)build, so `runSearchSelfCheck` polls the `$vectorSearch` and
+   `$search` probes together until both return hits (or fails loudly).
+
+Live verification (Atlas 8.0.27, `marshal` db): `provision-and-seed complete`, 15 seeded, 9 decided
+precedents, self-check `vector:3 search:3`. All 31 unit tests pass; typecheck clean.
