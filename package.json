@@ -1,0 +1,34 @@
+{
+  "name": "mongodb-mastra-agentic-ai-qs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "tsx src/server/app.ts",
+    "provision": "tsx scripts/provision-and-seed.ts",
+    "seed": "tsx scripts/provision-and-seed.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/amazon-bedrock": "latest",
+    "@ai-sdk/anthropic": "latest",
+    "@ai-sdk/openai": "latest",
+    "@hono/node-server": "^2.0.8",
+    "@mastra/core": "latest",
+    "@mastra/memory": "latest",
+    "@mastra/mongodb": "latest",
+    "@mastra/voyageai": "latest",
+    "hono": "^4",
+    "mongodb": "^6",
+    "voyageai": "0.3.1",
+    "zod": "^3"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "mastra": "^1.18.0",
+    "tsx": "^4",
+    "typescript": "^5",
+    "vitest": "^2"
+  }
+}
