@@ -7,6 +7,7 @@ import {
 import { seedTransactions, countDecidedPrecedents } from '../src/data/seed-transactions';
 import { runSearchSelfCheck } from '../src/data/search-self-check';
 import { TRANSACTIONS_COLLECTION } from '../src/mastra/schemas/transactions';
+import { provisionPolicyIndexes, seedPolicies } from '../src/governance/provision-policies';
 import { getQueryEmbedder } from '../src/mastra/embed';
 
 async function main() {
@@ -30,6 +31,12 @@ async function main() {
     });
 
     await runSearchSelfCheck(db, embed);
+
+    // Policy governance layer: indexes + seed policy set on the same cluster.
+    await provisionPolicyIndexes(db);
+    const policies = await seedPolicies(db, embed);
+    logger.info('seeded policies', { policies });
+
     logger.info('provision-and-seed complete');
   } finally {
     await client.close();

@@ -13,6 +13,8 @@ export interface Config {
   bedrockRegion?: string;
   port: number;
   rrfK: number;
+  /** HMAC secret for the append-only audit chain. Host-side only; never stored in records. */
+  auditSecret: string;
 }
 
 const EnvSchema = z.object({
@@ -29,6 +31,7 @@ const EnvSchema = z.object({
   BEDROCK_REGION: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(8000),
   RRF_K: z.coerce.number().int().positive().default(60),
+  AUDIT_SECRET: z.string().min(1).default('marshal-dev-audit-secret'),
 });
 
 export function loadConfig(
@@ -48,5 +51,6 @@ export function loadConfig(
     bedrockRegion: e.BEDROCK_REGION,
     port: e.PORT,
     rrfK: e.RRF_K,
+    auditSecret: e.AUDIT_SECRET,
   };
 }
