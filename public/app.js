@@ -23,24 +23,53 @@ function renderLockup() {
   const el = $('#lockup');
   if (el) el.innerHTML = mongoLeafSVG(24) + '<span class="divider"></span>' + mastraMarkSVG(20);
 }
+
+// Fill the empty center with a productive "how it works" panel (never a floating message).
+const WELCOME_FLOW = [
+  { i: '🔍', n: 'Triage', d: 'rules + compliance screen first' },
+  { i: '⚡', n: 'Retrieve', d: 'hybrid search for precedent' },
+  { i: '🤖', n: 'Reason', d: 'agent weighs the evidence' },
+  { i: '🕸', n: 'Trace', d: '$graphLookup fund network' },
+  { i: '⚖️', n: 'Govern', d: 'policy check + score' },
+  { i: '🔒', n: 'Decide', d: 'commit or human gate' },
+];
+const WELCOME_JOBS = [
+  { i: '🧭', b: 'Vector search', d: 'semantic recall of similar cases', q: '$vectorSearch' },
+  { i: '🔤', b: 'Full-text', d: 'exact names, codes, phrases', q: '$search' },
+  { i: '⚡', b: 'Hybrid', d: 'both, fused server-side', q: '$rankFusion' },
+  { i: '🕸', b: 'Graph', d: 'trace mule / ring networks', q: '$graphLookup' },
+  { i: '🧠', b: 'Long-term memory', d: 'recall & cite prior verdicts', q: 'agent memory' },
+  { i: '⚖️', b: 'Policy governance', d: 'grounded, cited compliance', q: 'policy vectors' },
+  { i: '🔒', b: 'Durable state', d: 'suspend/resume human gate', q: 'workflow state' },
+  { i: '🛡', b: 'Audit', d: 'tamper-evident decision log', q: 'hash chain' },
+];
+function renderWelcome() {
+  const flow = $('#wflow');
+  if (flow) flow.innerHTML = WELCOME_FLOW.map((s, idx) =>
+    `<div class="wstep"><div class="wi">${s.i}</div><div class="wn">${s.n}</div><div class="wd">${s.d}</div></div>`
+    + (idx < WELCOME_FLOW.length - 1 ? '<div class="warrow">›</div>' : '')).join('');
+  const grid = $('#wgrid');
+  if (grid) grid.innerHTML = WELCOME_JOBS.map(j =>
+    `<div class="wjob"><div class="ji">${j.i}</div><div><b>${j.b}</b><div class="jd">${j.d}</div><div class="jq">${j.q}</div></div></div>`).join('');
+}
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = n => '$' + Number(n || 0).toLocaleString();
 
 // ---- capability rail --------------------------------------------------------
 const CAPS = [
-  { key: 'vector', ico: '🧭', name: 'Vector' },
-  { key: 'fulltext', ico: '🔤', name: 'Full-Text' },
-  { key: 'hybrid', ico: '⚡', name: 'Hybrid' },
-  { key: 'graph', ico: '🕸', name: 'Graph' },
-  { key: 'memory', ico: '🧠', name: 'Memory' },
-  { key: 'governance', ico: '⚖️', name: 'Governance' },
-  { key: 'durable', ico: '🔒', name: 'Durable' },
-  { key: 'audit', ico: '🛡', name: 'Audit' },
+  { key: 'vector', ico: '🧭', name: 'Vector', tip: '$vectorSearch — semantic recall of similar prior cases from Voyage embeddings, all in Atlas.' },
+  { key: 'fulltext', ico: '🔤', name: 'Full-Text', tip: '$search (Atlas Search) — exact names, codes and phrases embeddings blur over.' },
+  { key: 'hybrid', ico: '⚡', name: 'Hybrid', tip: '$rankFusion — vector + full-text fused server-side by reciprocal rank. One query, no client merge.' },
+  { key: 'graph', ico: '🕸', name: 'Graph', tip: '$graphLookup — traverses sender→recipient links to surface mule rings and circular money flow.' },
+  { key: 'memory', ico: '🧠', name: 'Memory', tip: 'Long-term agent memory — recalls and cites how similar prior cases were decided.' },
+  { key: 'governance', ico: '⚖️', name: 'Governance', tip: 'Policy layer — retrieves relevant policies by vector, an LLM cites violations, deterministic severity scores them.' },
+  { key: 'durable', ico: '🔒', name: 'Durable', tip: 'Durable workflow state — suspend at the human-approval gate and resume the same case, on Atlas.' },
+  { key: 'audit', ico: '🛡', name: 'Audit', tip: 'Tamper-evident audit — every decision is an HMAC hash-chained, verifiable record.' },
 ];
 const capCounts = {};
 function renderRail() {
   $('#rail').innerHTML = CAPS.map(c => `
-    <div class="cap ${capCounts[c.key] ? 'active' : ''}" data-cap="${c.key}" title="${c.name} — times exercised this session">
+    <div class="cap ${capCounts[c.key] ? 'active' : ''}" data-cap="${c.key}" data-tip="${esc(c.tip)}">
       <div class="ico">${c.ico}</div>
       <div class="name">${c.name}</div>
       <div class="lbl2">runs</div>
@@ -60,11 +89,15 @@ let selected = null;
 const sessionResolved = {};
 function caseCard(t) {
   const el = document.createElement('div');
-  el.className = `case s-${t.status}` + (selected === t.transaction_id ? ' sel' : '');
+  // If THIS session resolved the case, reflect the user's own decision on the card (the shared
+  // transaction status is intentionally left untouched in demo mode, so we overlay it here).
+  const mine = sessionResolved[t.transaction_id];
+  const status = mine ? (mine === 'approve' ? 'approved' : 'rejected') : t.status;
+  el.className = `case s-${status}` + (selected === t.transaction_id ? ' sel' : '');
   el.dataset.id = t.transaction_id;
   const isPrecedent = t.model_used === 'historical';
   el.innerHTML = `
-    <div class="row"><span class="amt">${money(t.amount)}</span><span class="pill ${esc(t.status)}">${esc(t.status)}</span></div>
+    <div class="row"><span class="amt">${money(t.amount)}</span><span class="pill ${esc(status)}">${esc(status)}${mine ? ' ✓' : ''}</span></div>
     <div class="sub">${esc(t.sender?.name)} → ${esc(t.recipient?.name)}</div>
     <div class="sub dim mono">${esc(t.transaction_id)} · ${esc(t.lane)}${isPrecedent ? ' · <span style="opacity:.8">precedent</span>' : ''}</div>`;
   el.onclick = () => openCase(t.transaction_id);
@@ -148,11 +181,23 @@ async function openCase(id) {
 
 function ringSvg(ring, seed) {
   const nodes = [...new Set(ring.edges.flatMap(e => [e.from, e.to]))];
-  const W = 320, H = 150, cx = W / 2, cy = H / 2, r = 55;
-  const pos = {}; nodes.forEach((n, i) => { const a = (i / nodes.length) * 2 * Math.PI - Math.PI / 2; pos[n] = { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }; });
-  const edges = ring.edges.map(e => { const p = pos[e.from], q = pos[e.to]; if (!p || !q) return ''; return `<path class="edge" d="M${p.x} ${p.y} Q ${cx} ${cy} ${q.x} ${q.y}"/>`; }).join('');
-  const nodeEls = nodes.map(n => `<g class="node"><circle cx="${pos[n].x}" cy="${pos[n].y}" r="16" ${n === seed ? 'style="stroke:var(--warn);stroke-width:3"' : ''}/><text x="${pos[n].x}" y="${pos[n].y + 3}">${esc(n.replace('ACC-', ''))}</text></g>`).join('');
-  return `<svg id="ring" viewBox="0 0 ${W} ${H}"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0 0 L7 3 L0 6 z" fill="var(--crit)"/></marker></defs>${edges}${nodeEls}</svg>`;
+  // Bigger canvas + margin so labels (placed BELOW each node, not inside) never overflow.
+  const W = 440, H = 240, cx = W / 2, cy = H / 2 - 6, R = 78, nodeR = 13;
+  const pos = {};
+  nodes.forEach((n, i) => { const a = (i / nodes.length) * 2 * Math.PI - Math.PI / 2; pos[n] = { x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) }; });
+  const edges = ring.edges.map(e => {
+    const p = pos[e.from], q = pos[e.to]; if (!p || !q) return '';
+    return `<path class="edge" d="M${p.x.toFixed(1)} ${p.y.toFixed(1)} Q ${cx} ${cy} ${q.x.toFixed(1)} ${q.y.toFixed(1)}"/>`;
+  }).join('');
+  const nodeEls = nodes.map(n => {
+    const label = esc(n.replace('ACC-', '').replace('RING-', ''));
+    const isSeed = n === seed;
+    return `<g class="node">
+      <circle cx="${pos[n].x.toFixed(1)}" cy="${pos[n].y.toFixed(1)}" r="${nodeR}" ${isSeed ? 'style="stroke:var(--warn);stroke-width:3"' : ''}/>
+      <text x="${pos[n].x.toFixed(1)}" y="${(pos[n].y + nodeR + 15).toFixed(1)}" class="nlabel">${label}${isSeed ? ' ◆' : ''}</text>
+    </g>`;
+  }).join('');
+  return `<svg id="ring" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0 0 L7 3 L0 6 z" fill="var(--crit)"/></marker></defs>${edges}${nodeEls}</svg>`;
 }
 
 async function resolve(id, decision) {
@@ -344,8 +389,8 @@ async function loadMode() {
   DEMO_MODE = !!m.demoMode;
   if (DEMO_MODE) {
     const tag = document.querySelector('.tag');
-    if (tag) tag.textContent = 'MongoDB Atlas + Mastra · Demo (recorded run)';
+    if (tag) tag.textContent = 'MongoDB Atlas + Mastra · Fraud Investigation';
   }
 }
-function boot() { renderLockup(); initTheme(); renderRail(); wire(); initTour(); loadMode(); loadQueue(); loadCaps(); backfillFeed(); refreshAudit(); connect(); }
+function boot() { renderLockup(); renderWelcome(); initTheme(); renderRail(); wire(); initTour(); loadMode(); loadQueue(); loadCaps(); backfillFeed(); refreshAudit(); connect(); }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

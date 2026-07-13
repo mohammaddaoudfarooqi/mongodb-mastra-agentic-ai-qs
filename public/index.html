@@ -25,9 +25,9 @@
   * { box-sizing:border-box; } html,body { height:100%; }
   body { margin:0; background:var(--bggrad); color:var(--ink); font-family:var(--sans); overflow:hidden; transition:background .3s,color .3s; }
   .mono { font-family:var(--mono); }
-  #hud { display:grid; grid-template-rows:58px 74px 1fr 40px; grid-template-columns:360px 1fr 360px;
+  #hud { display:grid; grid-template-rows:58px 74px 1fr 40px; grid-template-columns:380px minmax(0,1fr) 400px;
          grid-template-areas:"top top top" "rail rail rail" "left center right" "bottom bottom bottom";
-         height:100vh; gap:12px; padding:12px; }
+         height:100vh; max-width:2200px; margin:0 auto; gap:12px; padding:12px; }
   .panel { background:var(--panel); border:1px solid var(--border); border-radius:14px; backdrop-filter:blur(10px); overflow:hidden; }
   .panel h2 { font-size:10.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); margin:0; padding:13px 16px 9px; display:flex; justify-content:space-between; }
   .scroll { overflow-y:auto; height:calc(100% - 36px); padding:0 12px 14px; }
@@ -60,6 +60,13 @@
   .cap.active .n { color:var(--mongo); }
   .cap.pulse { animation:cappulse .7s ease; }
   @keyframes cappulse { 0%{background:rgba(0,237,100,.28)} 100%{background:var(--panel2)} }
+  .cap { cursor:help; }
+  .cap::after { content:attr(data-tip); position:absolute; left:50%; top:calc(100% + 9px); width:240px; z-index:60;
+    transform:translateX(-50%) translateY(-4px); background:var(--panel2); color:var(--ink); border:1px solid var(--mongo);
+    border-radius:9px; padding:9px 11px; font-family:var(--sans); font-size:11.5px; line-height:1.45; text-transform:none; letter-spacing:0;
+    box-shadow:0 12px 30px rgba(0,0,0,.5); opacity:0; pointer-events:none; transition:opacity .15s, transform .15s; }
+  .cap:hover { overflow:visible; }
+  .cap:hover::after { opacity:1; transform:translateX(-50%) translateY(0); }
 
   /* case queue */
   #left { grid-area:left; } #center { grid-area:center; } #right { grid-area:right; }
@@ -80,9 +87,21 @@
 
   /* center: welcome + detail */
   #center .scroll { padding:0; }
-  #welcome { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:14px; color:var(--muted); padding:30px; }
-  #welcome .big { font-size:26px; color:var(--ink); font-weight:700; letter-spacing:.01em; }
-  #welcome .lead { max-width:440px; line-height:1.5; }
+  #welcome { min-height:100%; display:flex; flex-direction:column; gap:22px; color:var(--muted); padding:34px 40px; }
+  #welcome .wtop { text-align:center; max-width:760px; margin:8px auto 0; }
+  #welcome .big { font-size:30px; color:var(--ink); font-weight:800; letter-spacing:.01em; margin-bottom:12px; }
+  #welcome .lead { line-height:1.6; font-size:14px; }
+  /* how-it-works pipeline rail */
+  .wflow { display:flex; align-items:stretch; gap:0; justify-content:center; flex-wrap:wrap; }
+  .wflow .wstep { flex:1; min-width:120px; max-width:180px; text-align:center; padding:14px 12px; border:1px solid var(--border); border-radius:12px; background:var(--panel2); position:relative; }
+  .wflow .wstep .wi { font-size:20px; } .wflow .wstep .wn { font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink); margin-top:6px; }
+  .wflow .wstep .wd { font-size:11px; color:var(--dim); margin-top:4px; line-height:1.4; }
+  .wflow .warrow { display:flex; align-items:center; color:var(--dim); font-size:18px; padding:0 6px; }
+  /* eight-jobs explainer grid */
+  .wgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+  .wjob { display:flex; gap:11px; align-items:flex-start; border:1px solid var(--border); border-radius:12px; background:var(--shadow); padding:13px 15px; }
+  .wjob .ji { font-size:18px; flex:0 0 22px; } .wjob b { color:var(--ink); font-size:13px; } .wjob .jd { color:var(--muted); font-size:12px; line-height:1.45; margin-top:2px; }
+  .wjob .jq { font-family:var(--mono); font-size:10px; color:var(--mongo); margin-top:4px; }
   #detail { padding:16px 18px; display:none; }
   #detail.show { display:block; }
   .dhead { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:6px; }
@@ -104,8 +123,8 @@
   .mini .row .pill { transform:scale(.92); }
   .policy { border-left:3px solid var(--warn); }
   /* ring graph */
-  #ring { width:100%; height:180px; } .node circle { fill:var(--panel2); stroke:var(--crit); stroke-width:2; }
-  .node text { fill:var(--ink); font-family:var(--mono); font-size:10px; text-anchor:middle; }
+  #ring { width:100%; max-width:440px; height:230px; display:block; margin:0 auto; } .node circle { fill:var(--panel2); stroke:var(--crit); stroke-width:2; }
+  .node text.nlabel { fill:var(--muted); font-family:var(--mono); font-size:11px; text-anchor:middle; }
   .edge { stroke:var(--crit); stroke-width:1.6; fill:none; marker-end:url(#arrow); opacity:.8; }
   .edge-lbl { fill:var(--muted); font-family:var(--mono); font-size:9px; }
   /* decision banner + actions */
@@ -170,9 +189,12 @@
 
   <div id="center" class="panel"><div class="scroll">
     <div id="welcome">
-      <div class="big">One cluster. Eight jobs.</div>
-      <div class="lead">Marshal investigates each flagged transaction with vector, full-text, hybrid & graph search, long-term memory, a policy governance layer, and a durable human-approval gate — all on a single MongoDB Atlas cluster.</div>
-      <div class="lead dim">Press <b style="color:var(--mongo)">▶ Launch Investigation</b>, then click any case to see how it was decided.</div>
+      <div class="wtop">
+        <div class="big">One cluster. Eight jobs.</div>
+        <div class="lead">Every flagged transaction is investigated by an AI agent — retrieval, graph fund-tracing, long-term memory, a policy governance layer, and a durable human-approval gate — all on a single MongoDB Atlas cluster. Press <b style="color:var(--mongo)">▶ Launch Investigation</b>, then open any case to see exactly how it was decided.</div>
+      </div>
+      <div class="wflow" id="wflow"></div>
+      <div class="wgrid" id="wgrid"></div>
     </div>
     <div id="detail"></div>
   </div></div>
@@ -199,6 +221,6 @@
     <button class="btn launch" id="tourNext">Next ›</button>
   </div>
 </div>
-<script type="module" src="/app.js?v=9"></script>
+<script type="module" src="/app.js?v=13"></script>
 </body>
 </html>
