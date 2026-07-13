@@ -280,6 +280,11 @@ async function runReplay() {
   const { events = [], analyses = [] } = await fetch('/api/replay').then(r => r.json()).catch(() => ({}));
   if (!events.length) { setStatus('No baked replay found — run `pnpm bake` first.'); return; }
   const byId = Object.fromEntries(analyses.map(a => [a.transaction_id, a]));
+  // Reset the rail + feed so this run counts ONLY itself (the tiles read "runs"). Without this
+  // the backfilled rollup from loadCaps() is doubled as the replay re-emits the same events.
+  for (const k in capCounts) delete capCounts[k];
+  renderRail();
+  $('#feed').innerHTML = '';
   let i = 0;
   const stepMs = 420; // pacing per event; ~feels like a live run but instant overall
   clearInterval(replayTimer);
