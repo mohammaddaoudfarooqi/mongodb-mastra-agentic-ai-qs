@@ -47,11 +47,15 @@
   .btn.launch:hover { background:rgba(0,237,100,.12); box-shadow:0 0 16px rgba(0,237,100,.2); }
 
   /* capability rail */
-  #rail { grid-area:rail; display:grid; grid-template-columns:repeat(8,1fr); gap:10px; padding:10px 14px; }
-  .cap { border:1px solid var(--border); border-radius:11px; padding:8px 10px; display:flex; flex-direction:column; gap:3px; position:relative; overflow:hidden; background:var(--panel2); transition:.2s; }
-  .cap .ico { font-size:15px; } .cap .name { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
-  .cap .n { font-family:var(--mono); font-size:17px; font-weight:600; }
+  #rail { grid-area:rail; display:grid; grid-template-columns:repeat(8,1fr); gap:10px; padding:9px 14px; }
+  .cap { border:1px solid var(--border); border-radius:11px; padding:0 11px; position:relative; overflow:hidden; background:var(--panel2); transition:.2s;
+         display:grid; grid-template-columns:auto 1fr auto; grid-template-rows:auto auto; align-items:center; column-gap:8px; }
+  .cap .ico { grid-row:1 / span 2; font-size:19px; }
+  .cap .name { grid-column:2; align-self:end; font-size:9.5px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); }
+  .cap .n { grid-column:3; grid-row:1 / span 2; font-family:var(--mono); font-size:20px; font-weight:700; color:var(--ink); line-height:1; }
+  .cap .lbl2 { grid-column:2; align-self:start; font-size:8.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); }
   .cap.active { border-color:var(--mongo); box-shadow:0 0 18px rgba(0,237,100,.22); }
+  .cap.active .n { color:var(--mongo); }
   .cap.pulse { animation:cappulse .7s ease; }
   @keyframes cappulse { 0%{background:rgba(0,237,100,.28)} 100%{background:var(--panel2)} }
 
@@ -191,6 +195,6 @@
     <button class="btn launch" id="tourNext">Next ›</button>
   </div>
 </div>
-<script type="module" src="/app.js?v=3"></script>
+<script type="module" src="/app.js?v=4"></script>
 </body>
 </html>

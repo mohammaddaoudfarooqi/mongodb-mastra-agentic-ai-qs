@@ -16,8 +16,10 @@ const CAPS = [
 const capCounts = {};
 function renderRail() {
   $('#rail').innerHTML = CAPS.map(c => `
-    <div class="cap ${capCounts[c.key] ? 'active' : ''}" data-cap="${c.key}">
-      <div class="ico">${c.ico}</div><div class="name">${c.name}</div>
+    <div class="cap ${capCounts[c.key] ? 'active' : ''}" data-cap="${c.key}" title="${c.name} — times exercised this session">
+      <div class="ico">${c.ico}</div>
+      <div class="name">${c.name}</div>
+      <div class="lbl2">runs</div>
       <div class="n" data-n="${c.key}">${capCounts[c.key] || 0}</div>
     </div>`).join('');
 }
