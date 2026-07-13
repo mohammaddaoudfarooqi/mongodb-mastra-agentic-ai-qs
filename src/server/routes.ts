@@ -20,6 +20,24 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
     return c.json({ cases });
   });
 
+  // Full analysis for one case — powers the case-detail drill-down (projection of stored data).
+  app.get('/api/cases/:id', async c => {
+    const doc = await db.collection('case_analysis').findOne({ transaction_id: c.req.param('id') }, { projection: { _id: 0 } });
+    if (!doc) return c.json({ error: 'not_analyzed' }, 404);
+    return c.json(doc);
+  });
+
+  // Capability rollup — how many times each MongoDB capability has been exercised (capability rail).
+  app.get('/api/capabilities', async c => {
+    const rows = await db.collection('agent_events').aggregate([
+      { $match: { capability: { $exists: true } } },
+      { $group: { _id: '$capability', count: { $sum: 1 } } },
+    ]).toArray();
+    const counts: Record<string, number> = {};
+    for (const r of rows) counts[r._id as string] = r.count as number;
+    return c.json({ counts });
+  });
+
   // Recent agent-operations feed (so a fresh page load shows the last run's activity).
   app.get('/api/feed', async c => {
     const events = await db.collection('agent_events')
@@ -34,34 +52,37 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
     return c.json({ reviews });
   });
 
-  // Resume a suspended case with a human verdict (evidence-hash drift-checked).
+  // Resume a suspended case with a human verdict. The client sends ONLY the decision; the server
+  // loads the evidence snapshot + hash it persisted at suspend-time and verifies against those
+  // (never a client-reconstructed snapshot — that was the bug that made resolves always fail).
   app.post('/api/reviews/:id/resolve', async c => {
     const id = c.req.param('id');
-    const body = await c.req.json().catch(() => ({})) as {
-      decision?: 'approve' | 'reject'; evidence_hash?: string; snapshot?: EvidenceSnapshot;
-    };
+    const body = await c.req.json().catch(() => ({})) as { decision?: 'approve' | 'reject' };
     if (body.decision !== 'approve' && body.decision !== 'reject') {
       return c.json({ error: 'decision must be approve|reject' }, 400);
     }
-    if (!body.evidence_hash || !body.snapshot) {
-      return c.json({ error: 'evidence_hash and snapshot are required' }, 400);
+    const review = await db.collection('reviews').findOne({ transaction_id: id, status: 'pending_review' });
+    if (!review || !review.snapshot || !review.evidence_hash) {
+      return c.json({ status: 'not_found', message: 'No pending review for this case.' }, 404);
     }
     const now = new Date().toISOString();
     const res = await resolveReview(db, cfg.auditSecret, {
       transaction_id: id, human_decision: body.decision,
-      echoed_evidence_hash: body.evidence_hash, current: body.snapshot, now,
+      echoed_evidence_hash: review.evidence_hash as string,
+      current: review.snapshot as EvidenceSnapshot, now,
     });
     if (res.status === 'rejected_stale') {
-      return c.json({ status: 'rejected_stale', message: 'Evidence changed since review; refresh and try again.' }, 409);
+      return c.json({ status: 'rejected_stale', message: 'Evidence changed since review.' }, 409);
     }
     await db.collection('reviews').updateOne({ transaction_id: id }, { $set: { status: 'resolved', reviewDecision: body.decision } });
-    return c.json({ status: 'committed' });
+    await db.collection('case_analysis').updateOne({ transaction_id: id }, { $set: { phase: 'committed', 'decision.reviewed_by': 'human', 'decision.disposition': body.decision } });
+    return c.json({ status: 'committed', decision: body.decision });
   });
 
   // Reset to a clean all-pending slate for a fresh demo run (keeps the seeded transactions +
   // their embeddings; only clears run-derived state and re-sets every transaction to pending).
   app.post('/api/reset', async c => {
-    for (const n of ['cases', 'case_decisions', 'reviews', 'audit_trail', 'agent_events']) {
+    for (const n of ['cases', 'case_decisions', 'reviews', 'audit_trail', 'agent_events', 'case_analysis']) {
       await db.collection(n).deleteMany({});
     }
     // Restore each transaction's status to its seed value (live cases -> pending, historical keep decided).

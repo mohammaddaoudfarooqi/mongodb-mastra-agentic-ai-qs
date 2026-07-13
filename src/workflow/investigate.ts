@@ -43,6 +43,7 @@ export async function runCaseInvestigation(
       flag_reason: decision.risk_factors[0] ?? 'held_for_review',
       rules_triggered: decision.risk_factors,
       evidence_hash: hash,
+      snapshot: snapshot as unknown as Record<string, unknown>,
       now,
     });
     return { transaction_id: facts.transaction_id, decision, compliance_score: complianceScore, phase: 'suspended', evidence_hash: hash };

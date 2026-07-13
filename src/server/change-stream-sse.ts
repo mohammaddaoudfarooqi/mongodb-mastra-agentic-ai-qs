@@ -11,7 +11,7 @@ export interface ChangeEvent {
 type Subscriber = (ev: ChangeEvent) => void;
 
 /** Collections whose writes the control-room UI projects. */
-export const WATCHED_COLLECTIONS = ['transactions', 'cases', 'case_decisions', 'reviews', 'audit_trail', 'agent_events'];
+export const WATCHED_COLLECTIONS = ['transactions', 'cases', 'case_decisions', 'reviews', 'audit_trail', 'agent_events', 'case_analysis'];
 
 /**
  * A single DB-wide change stream fanned out to all SSE subscribers — the KickOff pattern:

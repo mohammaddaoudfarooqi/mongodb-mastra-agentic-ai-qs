@@ -73,9 +73,11 @@ export async function commitCaseDecision(db: Db, auditSecret: string, input: Com
   });
 }
 
-/** Enqueue a held/escalated case for human review. */
+/** Enqueue a held/escalated case for human review. The full evidence snapshot is persisted so
+ *  the resolve endpoint verifies against SERVER-stored state (never a client reconstruction). */
 export async function enqueueReview(db: Db, input: {
-  transaction_id: string; flag_reason: string; rules_triggered: string[]; evidence_hash: string; now: string;
+  transaction_id: string; flag_reason: string; rules_triggered: string[];
+  evidence_hash: string; snapshot: Record<string, unknown>; now: string;
 }): Promise<void> {
   await db.collection(REVIEWS_COLLECTION).updateOne(
     { transaction_id: input.transaction_id },
@@ -84,6 +86,7 @@ export async function enqueueReview(db: Db, input: {
       flag_reason: input.flag_reason,
       rules_triggered: input.rules_triggered,
       evidence_hash: input.evidence_hash,
+      snapshot: input.snapshot,
       status: 'pending_review',
       created_at: new Date(input.now),
     } },

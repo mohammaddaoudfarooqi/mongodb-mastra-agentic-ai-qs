@@ -50,4 +50,17 @@ export class RetrievalService {
     const docs = await this.col().aggregate(buildGraphPipeline(accountId, { maxDepth })).toArray();
     return summarizeRing(docs[0] ?? { chain: [] }, accountId);
   }
+
+  /** Trace + return the raw edges (for the ring visualization) alongside the summary. */
+  async traceFundsGraph(accountId: string, maxDepth = 3): Promise<RingSummary & { edges: { from: string; to: string; amount: number }[] }> {
+    const docs = await this.col().aggregate(buildGraphPipeline(accountId, { maxDepth })).toArray();
+    const doc = docs[0] ?? { chain: [] };
+    const summary = summarizeRing(doc as any, accountId);
+    const edges = ((doc as any).chain ?? []).map((e: any) => ({
+      from: e?.sender?.account_number ?? '?',
+      to: e?.recipient?.account_number ?? '?',
+      amount: Number(e?.amount ?? 0),
+    }));
+    return { ...summary, edges };
+  }
 }

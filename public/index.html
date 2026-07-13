@@ -4,75 +4,153 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Marshal — Fraud Investigation Console</title>
+<link rel="icon" href="data:,">
 <style>
   :root {
-    --bg:#06090f; --panel:rgba(18,24,34,.72); --border:rgba(120,140,170,.18);
-    --ink:#e7edf5; --muted:#8b99ad; --accent:#00d68f; --warn:#f5a623; --crit:#ff5b6e; --mongo:#00ed64;
+    --bg:#05080e; --panel:rgba(17,23,33,.7); --panel2:rgba(24,32,44,.8); --border:rgba(120,145,180,.16);
+    --ink:#eaf0f7; --muted:#8695ab; --dim:#5d6b80;
+    --accent:#00e08a; --warn:#f7b731; --crit:#ff5d73; --info:#4aa8ff; --mongo:#00ed64;
     --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
     --sans:'Archivo',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   }
-  * { box-sizing:border-box; }
-  body { margin:0; height:100vh; background:radial-gradient(1200px 800px at 70% -10%,#0d1a24,#06090f); color:var(--ink); font-family:var(--sans); overflow:hidden; }
-  #hud { display:grid; grid-template-rows:60px 1fr 44px; grid-template-columns:340px 1fr 380px;
-         grid-template-areas:"top top top" "left center right" "bottom bottom bottom"; height:100vh; gap:12px; padding:12px; }
-  .panel { background:var(--panel); border:1px solid var(--border); border-radius:12px; backdrop-filter:blur(8px); overflow:hidden; }
-  #top { grid-area:top; display:flex; align-items:center; gap:16px; padding:0 18px; }
-  #brand { font-weight:800; letter-spacing:.14em; font-size:18px; }
-  #brand .dot { color:var(--mongo); }
-  .chip { font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; padding:4px 10px; border-radius:999px; border:1px solid var(--border); color:var(--muted); }
-  #left { grid-area:left; } #center { grid-area:center; } #right { grid-area:right; }
-  .panel h2 { font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin:0; padding:14px 16px 8px; }
-  .scroll { overflow-y:auto; height:calc(100% - 38px); padding:0 12px 12px; }
-  .card { border:1px solid var(--border); border-left:3px solid var(--muted); border-radius:9px; padding:10px 12px; margin:8px 0; background:rgba(255,255,255,.02); }
-  .card.risk-high { border-left-color:var(--crit); box-shadow:0 0 18px rgba(255,91,110,.12); }
-  .card.risk-med { border-left-color:var(--warn); }
-  .card.risk-low { border-left-color:var(--accent); }
-  .row { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  * { box-sizing:border-box; } html,body { height:100%; }
+  body { margin:0; background:radial-gradient(1400px 900px at 75% -15%,#0b1a26,#05080e 60%); color:var(--ink);
+         font-family:var(--sans); overflow:hidden; }
   .mono { font-family:var(--mono); }
-  .amt { font-family:var(--mono); font-size:15px; font-weight:600; }
-  .sub { color:var(--muted); font-size:12px; }
-  .pill { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; padding:2px 7px; border-radius:999px; }
-  .pill.pending { background:rgba(245,166,35,.16); color:var(--warn); }
-  .pill.approved { background:rgba(0,214,143,.16); color:var(--accent); }
-  .pill.rejected { background:rgba(255,91,110,.16); color:var(--crit); }
-  .pill.escalated { background:rgba(245,166,35,.16); color:var(--warn); }
-  .feed-item { font-size:12px; border-bottom:1px dashed var(--border); padding:8px 4px; }
-  .feed-item b { color:var(--ink); } .feed-item .t { color:var(--muted); font-family:var(--mono); font-size:10px; }
-  .btn { font-family:var(--mono); font-size:12px; letter-spacing:.08em; text-transform:uppercase; border:1px solid var(--border);
-         background:rgba(255,255,255,.03); color:var(--ink); padding:7px 12px; border-radius:8px; cursor:pointer; }
-  .btn.approve:hover { border-color:var(--accent); color:var(--accent); }
-  .btn.reject:hover { border-color:var(--crit); color:var(--crit); }
-  .btn.launch { border-color:var(--mongo); color:var(--mongo); }
-  .btn.launch:hover { background:rgba(0,237,100,.1); }
-  .btn:disabled { opacity:.5; cursor:default; }
-  .feed-item.step-suspend b, .feed-item.step-govern b { color:var(--warn); }
-  .feed-item.step-commit b { color:var(--accent); }
-  .feed-item.step-graph b { color:var(--crit); }
-  #bottom { grid-area:bottom; display:flex; align-items:center; gap:18px; padding:0 18px; font-family:var(--mono); font-size:12px; }
-  #live { display:flex; align-items:center; gap:7px; }
-  #live .dot { width:8px; height:8px; border-radius:50%; background:var(--crit); }
-  #live.on .dot { background:var(--mongo); box-shadow:0 0 8px var(--mongo); }
-  #counters span { color:var(--muted); margin-right:14px; } #counters b { color:var(--ink); }
-  .empty { color:var(--muted); font-size:12px; padding:12px 4px; }
+  #hud { display:grid; grid-template-rows:58px 74px 1fr 40px; grid-template-columns:360px 1fr 360px;
+         grid-template-areas:"top top top" "rail rail rail" "left center right" "bottom bottom bottom";
+         height:100vh; gap:12px; padding:12px; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:14px; backdrop-filter:blur(10px); overflow:hidden; }
+  .panel h2 { font-size:10.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); margin:0; padding:13px 16px 9px; display:flex; justify-content:space-between; }
+  .scroll { overflow-y:auto; height:calc(100% - 36px); padding:0 12px 14px; }
+  .scroll::-webkit-scrollbar { width:8px; } .scroll::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+
+  /* top bar */
+  #top { grid-area:top; display:flex; align-items:center; gap:14px; padding:0 18px; }
+  #brand { font-weight:800; letter-spacing:.16em; font-size:19px; display:flex; align-items:center; gap:9px; }
+  #brand .dot { width:11px;height:11px;border-radius:50%;background:var(--mongo); box-shadow:0 0 10px var(--mongo); }
+  .tag { font-family:var(--mono); font-size:10.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--dim); border:1px solid var(--border); padding:4px 10px; border-radius:999px; }
+  #status { font-family:var(--mono); font-size:12px; color:var(--mongo); }
+  .btn { font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; border:1px solid var(--border);
+         background:rgba(255,255,255,.03); color:var(--ink); padding:8px 14px; border-radius:9px; cursor:pointer; transition:.15s; }
+  .btn:hover { border-color:var(--muted); }
+  .btn:disabled { opacity:.45; cursor:default; }
+  .btn.launch { border-color:var(--mongo); color:var(--mongo); font-weight:600; }
+  .btn.launch:hover { background:rgba(0,237,100,.12); box-shadow:0 0 16px rgba(0,237,100,.2); }
+
+  /* capability rail */
+  #rail { grid-area:rail; display:grid; grid-template-columns:repeat(8,1fr); gap:10px; padding:10px 14px; }
+  .cap { border:1px solid var(--border); border-radius:11px; padding:8px 10px; display:flex; flex-direction:column; gap:3px; position:relative; overflow:hidden; background:var(--panel2); transition:.2s; }
+  .cap .ico { font-size:15px; } .cap .name { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  .cap .n { font-family:var(--mono); font-size:17px; font-weight:600; }
+  .cap.active { border-color:var(--mongo); box-shadow:0 0 18px rgba(0,237,100,.22); }
+  .cap.pulse { animation:cappulse .7s ease; }
+  @keyframes cappulse { 0%{background:rgba(0,237,100,.28)} 100%{background:var(--panel2)} }
+
+  /* case queue */
+  #left { grid-area:left; } #center { grid-area:center; } #right { grid-area:right; }
+  .case { border:1px solid var(--border); border-left:3px solid var(--dim); border-radius:11px; padding:11px 13px; margin:9px 0; cursor:pointer; transition:.15s; background:rgba(255,255,255,.015); }
+  .case:hover { border-color:var(--muted); transform:translateX(2px); background:rgba(255,255,255,.04); }
+  .case.sel { border-color:var(--info); box-shadow:0 0 0 1px var(--info) inset; }
+  .case.s-rejected,.case.s-escalated { border-left-color:var(--crit); }
+  .case.s-pending { border-left-color:var(--warn); }
+  .case.s-approved { border-left-color:var(--accent); }
+  .row { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .amt { font-family:var(--mono); font-size:16px; font-weight:600; }
+  .sub { color:var(--muted); font-size:12px; } .dim { color:var(--dim); }
+  .pill { font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; padding:3px 8px; border-radius:999px; font-weight:600; }
+  .pill.pending { background:rgba(247,183,49,.16); color:var(--warn); }
+  .pill.approved { background:rgba(0,224,138,.16); color:var(--accent); }
+  .pill.rejected,.pill.escalated { background:rgba(255,93,115,.16); color:var(--crit); }
+  .pill.held { background:rgba(247,183,49,.18); color:var(--warn); }
+
+  /* center: welcome + detail */
+  #center .scroll { padding:0; }
+  #welcome { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:14px; color:var(--muted); padding:30px; }
+  #welcome .big { font-size:26px; color:var(--ink); font-weight:700; letter-spacing:.01em; }
+  #welcome .lead { max-width:440px; line-height:1.5; }
+  #detail { padding:16px 18px; display:none; }
+  #detail.show { display:block; }
+  .dhead { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:6px; }
+  .dhead .id { font-family:var(--mono); font-size:13px; color:var(--muted); }
+  .dhead .amt { font-size:26px; }
+  .flow { font-size:13px; color:var(--muted); margin-bottom:14px; }
+  .section { margin:16px 0; }
+  .section > .lbl { font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--dim); margin-bottom:8px; display:flex; align-items:center; gap:7px; }
+  .chip2 { font-family:var(--mono); font-size:10px; padding:2px 7px; border-radius:6px; background:rgba(74,168,255,.14); color:var(--info); }
+  /* pipeline ribbon */
+  .pipe { display:flex; gap:6px; flex-wrap:wrap; }
+  .pstep { font-family:var(--mono); font-size:10px; padding:5px 9px; border-radius:7px; border:1px solid var(--border); color:var(--muted); }
+  .pstep.on { border-color:var(--mongo); color:var(--mongo); }
+  /* meter */
+  .meter { height:9px; border-radius:6px; background:rgba(255,255,255,.06); overflow:hidden; }
+  .meter > i { display:block; height:100%; border-radius:6px; }
+  /* precedent + policy cards */
+  .mini { border:1px solid var(--border); border-radius:9px; padding:9px 11px; margin:6px 0; background:rgba(255,255,255,.02); font-size:12.5px; }
+  .mini .row .pill { transform:scale(.92); }
+  .policy { border-left:3px solid var(--warn); }
+  /* ring graph */
+  #ring { width:100%; height:180px; } .node circle { fill:#0e1a24; stroke:var(--crit); stroke-width:2; }
+  .node text { fill:var(--ink); font-family:var(--mono); font-size:10px; text-anchor:middle; }
+  .edge { stroke:var(--crit); stroke-width:1.6; fill:none; marker-end:url(#arrow); opacity:.8; }
+  .edge-lbl { fill:var(--muted); font-family:var(--mono); font-size:9px; }
+  /* decision banner + actions */
+  .verdict { border-radius:11px; padding:13px 15px; margin:14px 0; display:flex; justify-content:space-between; align-items:center; }
+  .verdict.escalate,.verdict.held { background:rgba(247,183,49,.1); border:1px solid rgba(247,183,49,.4); }
+  .verdict.approve { background:rgba(0,224,138,.1); border:1px solid rgba(0,224,138,.4); }
+  .verdict.reject { background:rgba(255,93,115,.1); border:1px solid rgba(255,93,115,.4); }
+  .verdict .d { font-size:18px; font-weight:700; text-transform:capitalize; }
+  .actions { display:flex; gap:10px; margin-top:6px; }
+  .btn.approve { border-color:var(--accent); color:var(--accent); } .btn.approve:hover { background:rgba(0,224,138,.12); }
+  .btn.reject { border-color:var(--crit); color:var(--crit); } .btn.reject:hover { background:rgba(255,93,115,.12); }
+  .rationale { font-size:12.5px; color:var(--muted); line-height:1.55; }
+  details summary { cursor:pointer; color:var(--dim); font-size:11px; letter-spacing:.06em; text-transform:uppercase; }
+
+  /* feed */
+  .feed-item { display:flex; gap:9px; padding:9px 4px; border-bottom:1px dashed var(--border); font-size:12px; }
+  .feed-item .fico { font-size:14px; width:18px; text-align:center; flex:0 0 18px; }
+  .feed-item .fmain b { color:var(--ink); } .feed-item .t { color:var(--dim); font-family:var(--mono); font-size:9.5px; }
+  .feed-item .fdet { color:var(--muted); font-size:11px; }
+  .empty { color:var(--dim); font-size:12px; padding:16px 6px; }
+
+  /* bottom bar */
+  #bottom { grid-area:bottom; display:flex; align-items:center; gap:20px; padding:0 18px; font-family:var(--mono); font-size:12px; }
+  #live { display:flex; align-items:center; gap:8px; } #live .dot { width:9px;height:9px;border-radius:50%;background:var(--crit); }
+  #live.on .dot { background:var(--mongo); box-shadow:0 0 9px var(--mongo); }
+  #counters span { color:var(--dim); margin-right:15px; } #counters b { color:var(--ink); }
 </style>
 </head>
 <body>
 <div id="hud">
   <div id="top" class="panel">
-    <div id="brand">MARSHAL <span class="dot">●</span></div>
-    <span class="chip" id="mode">FRAUD INVESTIGATION CONSOLE</span>
-    <span class="chip" id="auditChip">AUDIT ⋯</span>
-    <span id="status" class="mono" style="color:var(--mongo);font-size:12px"></span>
+    <div id="brand">MARSHAL <span class="dot"></span></div>
+    <span class="tag">Fraud Investigation · One Atlas Cluster</span>
+    <span id="status"></span>
     <div style="flex:1"></div>
     <button class="btn" id="resetBtn">Reset</button>
     <button class="btn launch" id="launchBtn">▶ Launch Investigation</button>
   </div>
-  <div id="left" class="panel"><h2>Case Queue</h2><div class="scroll" id="queue"><div class="empty">loading…</div></div></div>
-  <div id="center" class="panel"><h2>Review Gate — Human Decision</h2><div class="scroll" id="reviews"><div class="empty">no cases awaiting review</div></div></div>
-  <div id="right" class="panel"><h2>Agent Operations Feed</h2><div class="scroll" id="feed"></div></div>
+
+  <div id="rail" class="panel"></div>
+
+  <div id="left" class="panel"><h2><span>Case Queue</span><span id="qcount" class="dim"></span></h2><div class="scroll" id="queue"><div class="empty">loading…</div></div></div>
+
+  <div id="center" class="panel"><div class="scroll">
+    <div id="welcome">
+      <div class="big">One cluster. Eight jobs.</div>
+      <div class="lead">Marshal investigates each flagged transaction with vector, full-text, hybrid & graph search, long-term memory, a policy governance layer, and a durable human-approval gate — all on a single MongoDB Atlas cluster.</div>
+      <div class="lead dim">Press <b style="color:var(--mongo)">▶ Launch Investigation</b>, then click any case to see how it was decided.</div>
+    </div>
+    <div id="detail"></div>
+  </div></div>
+
+  <div id="right" class="panel"><h2><span>Agent Operations Feed</span></h2><div class="scroll" id="feed"></div></div>
+
   <div id="bottom" class="panel">
     <div id="live"><span class="dot"></span><span>MongoDB Atlas</span></div>
     <div id="counters"></div>
+    <div style="flex:1"></div>
+    <span id="auditChip" class="dim">audit ⋯</span>
   </div>
 </div>
 <script type="module" src="/app.js"></script>

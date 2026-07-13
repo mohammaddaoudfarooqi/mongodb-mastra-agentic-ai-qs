@@ -52,7 +52,7 @@ describe('commitCaseDecision', () => {
 describe('enqueueReview', () => {
   it('writes a pending review + flips the case to PENDING_REVIEW', async () => {
     const { db, writes } = fakeDb();
-    await enqueueReview(db, { transaction_id: 't', flag_reason: 'structuring', rules_triggered: ['structuring_amount'], evidence_hash: 'abc', now: '2026-06-11T00:00:00Z' });
+    await enqueueReview(db, { transaction_id: 't', flag_reason: 'structuring', rules_triggered: ['structuring_amount'], evidence_hash: 'abc', snapshot: { transaction_id: 't' }, now: '2026-06-11T00:00:00Z' });
     expect(writes['reviews'][0].update.$set.status).toBe('pending_review');
     expect(writes['cases'][0].update.$set.state).toBe('PENDING_REVIEW');
     expect(writes['cases'][0].update.$set.evidence_hash).toBe('abc');
