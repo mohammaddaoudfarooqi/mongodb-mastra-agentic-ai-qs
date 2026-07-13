@@ -122,20 +122,38 @@ function loadStateThrottled() { clearTimeout(throttle); throttle = setTimeout(lo
 
 function escape(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
-$('#launchBtn').onclick = async () => {
-  const btn = $('#launchBtn'); btn.disabled = true; btn.textContent = 'Investigating…';
-  addFeed('system', '', 'Launch — investigating all pending cases', 'commit');
-  await fetch('/api/investigate/run', { method: 'POST' }).catch(() => {});
-  // Re-enable after a while; the run streams progress via SSE meanwhile.
-  setTimeout(() => { btn.disabled = false; btn.textContent = '▶ Launch Investigation'; }, 30000);
-};
-$('#resetBtn').onclick = async () => {
-  await fetch('/api/reset', { method: 'POST' }).catch(() => {});
-  $('#feed').innerHTML = '';
-  addFeed('system', '', 'Reset — all cases pending', 'commit');
-  loadState();
-};
+function setStatus(msg) {
+  const el = $('#status');
+  if (el) el.textContent = msg;
+}
 
-loadState();
-backfillFeed();
-connect();
+function wireButtons() {
+  const launch = $('#launchBtn');
+  const reset = $('#resetBtn');
+  if (launch) launch.addEventListener('click', async () => {
+    launch.disabled = true; launch.textContent = 'Investigating…';
+    setStatus('Investigation running — watch the feed →');
+    addFeed('system', '', 'Launch — investigating all pending cases', 'commit');
+    try { await fetch('/api/investigate/run', { method: 'POST' }); }
+    catch (e) { setStatus('Launch failed: ' + e); }
+    // The run streams progress via SSE; re-enable after a while.
+    setTimeout(() => { launch.disabled = false; launch.textContent = '▶ Launch Investigation'; setStatus(''); }, 120000);
+  });
+  if (reset) reset.addEventListener('click', async () => {
+    reset.disabled = true; setStatus('Resetting…');
+    try {
+      const r = await fetch('/api/reset', { method: 'POST' }).then(x => x.json());
+      $('#feed').innerHTML = '';
+      addFeed('system', '', `Reset — ${r.transactions ?? ''} cases pending`, 'commit');
+      await loadState();
+      setStatus('Reset complete');
+      setTimeout(() => setStatus(''), 2500);
+    } catch (e) { setStatus('Reset failed: ' + e); }
+    reset.disabled = false;
+  });
+}
+
+// Boot after the DOM is parsed (defensive: the script may load before the buttons exist).
+function boot() { wireButtons(); loadState(); backfillFeed(); connect(); }
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+else boot();
