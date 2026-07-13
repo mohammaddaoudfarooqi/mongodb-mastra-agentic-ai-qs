@@ -203,5 +203,60 @@ function wire() {
   });
 }
 
-function boot() { renderRail(); wire(); loadQueue(); loadCaps(); backfillFeed(); refreshAudit(); connect(); }
+// ---- theme ------------------------------------------------------------------
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  const b = $('#themeBtn'); if (b) b.textContent = t === 'light' ? '☾' : '◐';
+}
+function initTheme() {
+  const saved = localStorage.getItem('marshal-theme') || 'dark';
+  applyTheme(saved);
+  $('#themeBtn').addEventListener('click', () => {
+    const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    localStorage.setItem('marshal-theme', next); applyTheme(next);
+  });
+}
+
+// ---- guided walkthrough (custom coach-marks + spotlight) --------------------
+const TOUR = [
+  { sel: '#brand', title: 'Welcome to Marshal', body: 'A fraud-investigation console that runs an AI agent over flagged transactions — with vector, full-text, hybrid & graph search, long-term memory, a policy governance layer, and a durable human-approval gate. Every one of those jobs runs on a SINGLE MongoDB Atlas cluster.' },
+  { sel: '#rail', title: 'The capability rail', body: 'Eight MongoDB jobs the industry usually buys as separate systems — a vector DB, a keyword engine, a graph store, a cache, an audit log… Here they are one cluster. Each tile lights up and counts as the agent uses it during a run.' },
+  { sel: '#launchBtn', title: 'Launch an investigation', body: 'Click this to have the agent investigate every pending case. Watch the rail light up and the feed stream each step — triage, retrieval, graph fund-tracing, policy review, decision.' },
+  { sel: '#queue', title: 'The case queue', body: 'Every flagged transaction, colour-coded by outcome. Click any case to open its full investigation. Cases the agent is unsure about are HELD for you to decide.' },
+  { sel: '#feed', title: 'Agent operations feed', body: 'A live, icon-tagged trace of what the agent is doing right now — a pure projection of MongoDB change streams. Nothing here is faked client-side; it is the database writes surfacing in real time.' },
+  { sel: '#center', title: 'Case detail — the whole story', body: 'Click a case and this fills with the investigation pipeline, the similar precedent it found via hybrid search, an interactive fraud-ring graph from $graphLookup, a policy compliance meter with the exact cited policy — and, for held cases, the Approve / Reject gate.' },
+  { sel: '#auditChip', title: 'Tamper-evident audit', body: 'Every decision is written to an HMAC hash-chained audit trail. This chip re-verifies the whole chain — if any record were altered, it would turn red. Compliance-grade, on the same cluster.' },
+];
+let tourIx = 0;
+function positionTour() {
+  const s = TOUR[tourIx]; const el = document.querySelector(s.sel);
+  if (!el) return;
+  const r = el.getBoundingClientRect(); const pad = 8;
+  const hole = $('#tourHole');
+  hole.style.left = (r.left - pad) + 'px'; hole.style.top = (r.top - pad) + 'px';
+  hole.style.width = (r.width + pad * 2) + 'px'; hole.style.height = (r.height + pad * 2) + 'px';
+  const card = $('#tourCard'); card.style.display = 'block';
+  // Place card below the target if room, else above; clamp horizontally.
+  const cw = 320, ch = card.offsetHeight || 200;
+  let top = r.bottom + 14; if (top + ch > window.innerHeight - 12) top = Math.max(12, r.top - ch - 14);
+  let left = Math.min(Math.max(12, r.left), window.innerWidth - cw - 12);
+  card.style.top = top + 'px'; card.style.left = left + 'px';
+  $('#tourStep').textContent = `Step ${tourIx + 1} of ${TOUR.length}`;
+  $('#tourTitle').textContent = s.title; $('#tourBody').textContent = s.body;
+  $('#tourDots').innerHTML = TOUR.map((_, i) => `<i class="${i === tourIx ? 'on' : ''}"></i>`).join('');
+  $('#tourPrev').style.visibility = tourIx === 0 ? 'hidden' : 'visible';
+  $('#tourNext').textContent = tourIx === TOUR.length - 1 ? 'Done ✓' : 'Next ›';
+}
+function startTour() { tourIx = 0; $('#tourMask').classList.add('on'); positionTour(); }
+function endTour() { $('#tourMask').classList.remove('on'); $('#tourCard').style.display = 'none'; localStorage.setItem('marshal-tour-seen', '1'); }
+function initTour() {
+  $('#tourBtn').addEventListener('click', startTour);
+  $('#tourSkip').addEventListener('click', endTour);
+  $('#tourPrev').addEventListener('click', () => { if (tourIx > 0) { tourIx--; positionTour(); } });
+  $('#tourNext').addEventListener('click', () => { if (tourIx === TOUR.length - 1) endTour(); else { tourIx++; positionTour(); } });
+  window.addEventListener('resize', () => { if ($('#tourMask').classList.contains('on')) positionTour(); });
+  if (!localStorage.getItem('marshal-tour-seen')) setTimeout(startTour, 700);
+}
+
+function boot() { initTheme(); renderRail(); wire(); initTour(); loadQueue(); loadCaps(); backfillFeed(); refreshAudit(); connect(); }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

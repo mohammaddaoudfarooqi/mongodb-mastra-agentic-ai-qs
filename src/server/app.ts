@@ -16,6 +16,15 @@ export function createApp(cfg: Config, deps?: { db: Db; hub: ChangeStreamHub }):
   app.get('/api/health', c => c.json({ status: 'ok', app: cfg.appName }));
   if (deps) {
     mountRoutes(app, cfg, deps.db, deps.hub);
+    // No-cache the SPA so a plain browser refresh always loads current index.html/app.js
+    // (avoids the "stale cached JS = buttons look broken" class of problem).
+    app.use('/*', async (c, next) => {
+      await next();
+      const p = new URL(c.req.url).pathname;
+      if (p === '/' || p.endsWith('.html') || p.endsWith('.js') || p.endsWith('.css')) {
+        c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+    });
     // Serve the control-room SPA from ./public.
     app.use('/*', serveStatic({ root: './public' }));
   }
