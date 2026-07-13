@@ -23,6 +23,12 @@ export interface Config {
    * with no runtime LLM — deterministic, instant, free, scales to any number of viewers.
    */
   demoMode: boolean;
+  /**
+   * Size of the synthetic decided-precedent corpus seeded at provision time (the "deployment at
+   * scale" story: hybrid/vector/graph retrieval runs over this many real, embedded documents).
+   * 0 disables synthetic seeding (curated seed cases only).
+   */
+  seedScaleCount: number;
 }
 
 const EnvSchema = z.object({
@@ -45,6 +51,7 @@ const EnvSchema = z.object({
   SESSION_SECRET: z.string().optional(),
   NODE_ENV: z.string().optional(),
   DEMO_MODE: z.string().optional(),
+  SEED_SCALE_COUNT: z.coerce.number().int().min(0).default(1200),
 });
 
 const DEV_AUDIT_SECRET = 'marshal-dev-audit-secret';
@@ -83,5 +90,6 @@ export function loadConfig(
     auditSecret,
     sessionSecret,
     demoMode,
+    seedScaleCount: e.SEED_SCALE_COUNT,
   };
 }

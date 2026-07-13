@@ -10,7 +10,12 @@
     "provision": "tsx scripts/provision-and-seed.ts",
     "seed": "tsx scripts/provision-and-seed.ts",
     "eval": "tsx scripts/eval.ts",
-    "bake": "tsx scripts/bake-replay.ts"
+    "bake": "tsx scripts/bake-replay.ts",
+    "export:replay": "tsx scripts/export-replay.ts",
+    "restore:replay": "tsx scripts/restore-replay.ts",
+    "beat:policy": "tsx scripts/stage-beats.ts policy",
+    "beat:tamper": "tsx scripts/stage-beats.ts tamper",
+    "beat:restore": "tsx scripts/stage-beats.ts restore"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "latest",

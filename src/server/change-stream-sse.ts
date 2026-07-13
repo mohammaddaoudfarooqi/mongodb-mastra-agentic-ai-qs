@@ -10,8 +10,9 @@ export interface ChangeEvent {
 
 type Subscriber = (ev: ChangeEvent) => void;
 
-/** Collections whose writes the control-room UI projects. */
-export const WATCHED_COLLECTIONS = ['transactions', 'cases', 'case_decisions', 'reviews', 'audit_trail', 'agent_events', 'case_analysis'];
+/** Collections whose writes the control-room UI projects. `policies` powers the
+ *  "POLICY UPDATED LIVE" stage beat: edit a policy in the DB and every connected console reacts. */
+export const WATCHED_COLLECTIONS = ['transactions', 'cases', 'case_decisions', 'reviews', 'audit_trail', 'agent_events', 'case_analysis', 'policies'];
 
 /**
  * A single DB-wide change stream fanned out to all SSE subscribers — the KickOff pattern:

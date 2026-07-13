@@ -4,7 +4,7 @@ import { logger } from '../src/observability/logger';
 import {
   assertRankFusionSupported, provisionTransactionVectorIndex, provisionTransactionSearchIndex,
 } from '../src/data/provision-transactions';
-import { seedTransactions, countDecidedPrecedents } from '../src/data/seed-transactions';
+import { seedTransactions, seedSyntheticCorpus, countDecidedPrecedents } from '../src/data/seed-transactions';
 import { runSearchSelfCheck } from '../src/data/search-self-check';
 import { TRANSACTIONS_COLLECTION } from '../src/mastra/schemas/transactions';
 import { provisionPolicyIndexes, seedPolicies } from '../src/governance/provision-policies';
@@ -22,10 +22,28 @@ async function main() {
     await provisionTransactionVectorIndex(db);
     await provisionTransactionSearchIndex(db);
 
+    // Standard indexes: upserts key on transaction_id; the queue sorts by created_at; the stats
+    // readout and precedent filter count by status. Matters once the corpus is 1,000+ docs.
+    const txCol = db.collection(TRANSACTIONS_COLLECTION);
+    await txCol.createIndex({ transaction_id: 1 }, { unique: true }).catch(() => {});
+    await txCol.createIndex({ created_at: -1 }).catch(() => {});
+    await txCol.createIndex({ status: 1 }).catch(() => {});
+    await db.collection('agent_events').createIndex({ transaction_id: 1, ts: 1 }).catch(() => {});
+
     const embedder = getQueryEmbedder(cfg);
     const embed = (texts: string[]) => Promise.all(texts.map(t => embedder.embedQuery(t)));
     const written = await seedTransactions(db.collection(TRANSACTIONS_COLLECTION) as any, embed);
     logger.info('seeded transactions', { written });
+
+    // Scale corpus: batch-embedded synthetic decided precedents (SEED_SCALE_COUNT, default 1200).
+    if (cfg.seedScaleCount > 0) {
+      const scale = await seedSyntheticCorpus(
+        db.collection(TRANSACTIONS_COLLECTION) as any,
+        texts => embedder.embedDocuments(texts),
+        cfg.seedScaleCount,
+      );
+      logger.info('seeded synthetic scale corpus', scale);
+    }
     logger.info('decided precedents', {
       count: await countDecidedPrecedents(db.collection(TRANSACTIONS_COLLECTION) as any),
     });

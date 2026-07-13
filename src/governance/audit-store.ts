@@ -11,9 +11,11 @@ export const AUDIT_COLLECTION = 'audit_trail';
  * secret lives host-side (config), never in the stored records.
  */
 export class AuditStore {
-  constructor(private db: Db, private secret: string, private keyVersion = 1) {}
+  // `collectionName` defaults to the working audit trail; demo-mode verification points it at the
+  // immutable replay copy so a cleared live run can't make the audit chip read as broken/empty.
+  constructor(private db: Db, private secret: string, private keyVersion = 1, private collectionName: string = AUDIT_COLLECTION) {}
 
-  private col() { return this.db.collection<AuditRecord>(AUDIT_COLLECTION); }
+  private col() { return this.db.collection<AuditRecord>(this.collectionName); }
 
   /**
    * Append a chained event. When a `session` is passed, the read-tail + insert both run inside the

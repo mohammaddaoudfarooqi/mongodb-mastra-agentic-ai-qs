@@ -10,6 +10,8 @@ import { runPendingInvestigations } from '../workflow/run-engine';
 import { loadTransactionSeed } from '../ingestion/transaction-fixtures';
 import { logger } from '../observability/logger';
 import { newSessionId, signToken, verifyToken, bearer } from './session';
+import { gatherStats, type StatsSnapshot } from './stats';
+import { recordingSource } from '../data/replay-store';
 
 /**
  * Re-derive the evidence snapshot from CURRENT case/transaction state (review finding #2), so the
@@ -37,6 +39,11 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
   // cross-site callers from resetting state, launching runs, or resolving reviews — finding #7).
   const sidOf = (c: any): string | null => verifyToken(cfg.sessionSecret, bearer(c.req.header('authorization')));
 
+  // Where recorded-run content is read from: the working collections in live mode, the immutable
+  // `replay_*` copies in demo mode. Isolating these means a live run/reset can never corrupt the
+  // demo recording — the two modes coexist on one cluster (see src/data/replay-store.ts).
+  const REC = recordingSource(cfg.demoMode);
+
   // Mint a stateless session token (per browser tab). No server-side session store.
   app.post('/api/token', c => {
     const sessionId = newSessionId();
@@ -56,7 +63,7 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
   // dead click.
   app.get('/api/cases/:id', async c => {
     const id = c.req.param('id');
-    const doc = await db.collection('case_analysis').findOne({ transaction_id: id }, { projection: { _id: 0 } });
+    const doc = await db.collection(REC.analysis).findOne({ transaction_id: id }, { projection: { _id: 0 } });
     if (doc) return c.json({ ...doc, analyzed: true });
     const txn = await db.collection('transactions').findOne({ transaction_id: id }, { projection: { _id: 0, embedding: 0 } });
     if (!txn) return c.json({ error: 'not_found' }, 404);
@@ -68,7 +75,7 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
 
   // Capability rollup — how many times each MongoDB capability has been exercised (capability rail).
   app.get('/api/capabilities', async c => {
-    const rows = await db.collection('agent_events').aggregate([
+    const rows = await db.collection(REC.events).aggregate([
       { $match: { capabilities: { $exists: true, $ne: [] } } },
       { $unwind: '$capabilities' },
       { $group: { _id: '$capabilities', count: { $sum: 1 } } },
@@ -80,7 +87,7 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
 
   // Recent agent-operations feed (so a fresh page load shows the last run's activity).
   app.get('/api/feed', async c => {
-    const events = await db.collection('agent_events')
+    const events = await db.collection(REC.events)
       .find({}, { projection: { _id: 0 } }).sort({ ts: -1 }).limit(60).toArray();
     return c.json({ events });
   });
@@ -89,7 +96,7 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
   // resolved (session-scoped so 100+ concurrent users each see/clear their own gate).
   app.get('/api/reviews', async c => {
     const sid = sidOf(c);
-    const reviews = await db.collection('reviews')
+    const reviews = await db.collection(REC.reviews)
       .find({ status: 'pending_review' }, { projection: { _id: 0 } }).toArray();
     if (!sid) return c.json({ reviews });
     const resolvedIds = new Set(
@@ -113,7 +120,8 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
     if (body.decision !== 'approve' && body.decision !== 'reject') {
       return c.json({ error: 'decision must be approve|reject' }, 400);
     }
-    const review = await db.collection('reviews').findOne({ transaction_id: id, status: 'pending_review' });
+    // Existence check reads the mode-appropriate source (frozen replay in demo, working in live).
+    const review = await db.collection(REC.reviews).findOne({ transaction_id: id, status: 'pending_review' });
     if (!review || !review.snapshot || !review.evidence_hash) {
       return c.json({ status: 'not_found', message: 'No pending review for this case.' }, 404);
     }
@@ -173,8 +181,8 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
   // Replay data (demo mode): the pre-baked recorded run — ordered agent_events + per-case
   // analyses. The client animates these instead of calling the live agent. Read-only + shared.
   app.get('/api/replay', async c => {
-    const events = await db.collection('agent_events').find({}, { projection: { _id: 0 } }).sort({ ts: 1 }).toArray();
-    const analyses = await db.collection('case_analysis').find({}, { projection: { _id: 0 } }).toArray();
+    const events = await db.collection(REC.events).find({}, { projection: { _id: 0 } }).sort({ ts: 1 }).toArray();
+    const analyses = await db.collection(REC.analysis).find({}, { projection: { _id: 0 } }).toArray();
     return c.json({ events, analyses });
   });
 
@@ -216,9 +224,29 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
     return c.json({ status: 'started' });
   });
 
+  // Cluster stats + decision-quality scorecard for the bottom-bar payoff readout. Every number is
+  // a real count or measurement from the cluster (nothing staged). Cached in-process for 30s so
+  // 100+ concurrent viewers cost one aggregation, not one each.
+  let statsCache: { at: number; data: StatsSnapshot } | null = null;
+  let statsInFlight: Promise<StatsSnapshot> | null = null;
+  app.get('/api/stats', async c => {
+    if (statsCache && Date.now() - statsCache.at < 30_000) return c.json(statsCache.data);
+    statsInFlight ??= gatherStats(db, { events: REC.events, analysis: REC.analysis, audit: REC.audit })
+      .finally(() => { statsInFlight = null; });
+    try {
+      const data = await statsInFlight;
+      statsCache = { at: Date.now(), data };
+      return c.json(data);
+    } catch (err) {
+      logger.error('stats failed', { err: String(err) });
+      if (statsCache) return c.json(statsCache.data); // serve stale over erroring
+      return c.json({ error: 'stats_unavailable' }, 503);
+    }
+  });
+
   // Audit-chain integrity (verify_chain).
   app.get('/api/audit/verify', async c => {
-    const v = await new AuditStore(db, cfg.auditSecret).verify();
+    const v = await new AuditStore(db, cfg.auditSecret, 1, REC.audit).verify();
     return c.json(v);
   });
 

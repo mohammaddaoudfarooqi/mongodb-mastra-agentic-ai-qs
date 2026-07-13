@@ -18,7 +18,14 @@ export interface MultimodalEmbedClient {
   }): Promise<{ data?: { index?: number; embedding?: number[] }[] }>;
 }
 
-export interface VoyageEmbedder { embedQuery(query: string): Promise<number[]>; }
+export interface VoyageEmbedder {
+  embedQuery(query: string): Promise<number[]>;
+  /** Batch-embed corpus documents (chunked, order-preserving). */
+  embedDocuments(texts: string[]): Promise<number[][]>;
+}
+
+/** Max inputs per multimodalEmbed request — stays under the Voyage API batch limit. */
+export const EMBED_BATCH_SIZE = 96;
 
 export function createVoyageEmbedder(deps: { client: MultimodalEmbedClient; model?: string }): VoyageEmbedder {
   const model = deps.model ?? MULTIMODAL_MODEL;
@@ -30,6 +37,19 @@ export function createVoyageEmbedder(deps: { client: MultimodalEmbedClient; mode
       const rows = res.data ?? [];
       const first = rows.find(r => (r.index ?? 0) === 0) ?? rows[0];
       return first?.embedding ?? [];
+    },
+    async embedDocuments(texts: string[]): Promise<number[][]> {
+      const out: number[][] = new Array(texts.length);
+      for (let start = 0; start < texts.length; start += EMBED_BATCH_SIZE) {
+        const chunk = texts.slice(start, start + EMBED_BATCH_SIZE);
+        const res = await deps.client.multimodalEmbed({
+          inputs: buildMultimodalInputs(chunk), model, inputType: 'document',
+        });
+        for (const [i, row] of (res.data ?? []).entries()) {
+          out[start + (row.index ?? i)] = row.embedding ?? [];
+        }
+      }
+      return out;
     },
   };
 }

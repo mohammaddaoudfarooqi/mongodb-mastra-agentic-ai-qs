@@ -8,6 +8,7 @@ import { loadConfig } from '../config';
 import { logger } from '../observability/logger';
 import { ChangeStreamHub } from './change-stream-sse';
 import { mountRoutes } from './routes';
+import { REPLAY_COLLECTIONS } from '../data/replay-store';
 
 /** Build the app. When `deps` is provided, the control-room API is mounted; otherwise only
  *  the health route exists (used by unit tests that don't need a DB). */
@@ -40,6 +41,13 @@ export async function startServer(cfg: Config): Promise<void> {
   (db as any).client = client;
   const hub = new ChangeStreamHub(db);
   hub.start();
+  // Demo mode reads the immutable replay copies; if the deploy skipped `pnpm bake` they're empty and
+  // Replay would appear to do nothing. Fail loud in the logs so it's diagnosable, not mysterious.
+  if (cfg.demoMode) {
+    const baked = await db.collection(REPLAY_COLLECTIONS.agent_events).estimatedDocumentCount().catch(() => 0);
+    if (!baked) logger.warn('DEMO_MODE is on but no baked replay found — run `pnpm bake` or Replay will be empty', { collection: REPLAY_COLLECTIONS.agent_events });
+    else logger.info('demo replay loaded', { events: baked });
+  }
   const app = createApp(cfg, { db, hub });
   serve({ fetch: app.fetch, port: cfg.port }, info => {
     logger.info('server listening', { app: cfg.appName, port: info.port });

@@ -12,8 +12,64 @@ one connection string**.
 ```bash
 pnpm install
 cp .env.example .env    # set MONGODB_URI and VOYAGE_API_KEY
+pnpm provision          # indexes + seed cases + the synthetic precedent corpus (SEED_SCALE_COUNT, default 1200)
+pnpm bake               # record one real agent run into the immutable replay_* collections (demo mode)
 pnpm dev                # starts the API on http://localhost:8000
 curl localhost:8000/api/health   # { "status": "ok", "app": "Marshal" }
+```
+
+`pnpm bake` is required only for demo mode, but running it as part of every deploy is safe and
+recommended so the booth build is always ready.
+
+**Fresh cluster with no LLM access?** The committed recording restores demo mode without baking:
+
+```bash
+pnpm provision          # transactions + policies + the synthetic corpus (deterministic, no LLM output)
+pnpm restore:replay     # load the committed demo recording from data/replay/ into replay_* (no LLM)
+DEMO_MODE=1 pnpm dev
+```
+
+## Data safety — the demo recording
+
+`pnpm bake` records a run of the **real** LLM agent, so it is not byte-reproducible. The recording
+is therefore committed to `data/replay/*.json` (Extended JSON, preserving `_id` order for the audit
+hash chain). After a bake you're happy with, snapshot it into git:
+
+```bash
+pnpm export:replay      # replay_* collections -> data/replay/*.json   (commit these)
+pnpm restore:replay     # data/replay/*.json -> replay_* collections   (recover / seed a new cluster)
+```
+
+The synthetic corpus and policies are regenerated deterministically by `pnpm provision`, so only the
+LLM-produced recording needs version control.
+
+## Modes
+
+- **Live** (default): ▶ Launch runs the real Mastra agent over every pending case; the UI —
+  including the center-stage investigation theater — is a pure projection of MongoDB change streams.
+  Writes land in the working collections (`agent_events`, `case_analysis`, `reviews`, `audit_trail`).
+- **Demo** (`DEMO_MODE=1`): ▶ Replay animates a pre-baked recording of a real run — no runtime LLM,
+  no per-viewer writes, safe for hundreds of concurrent viewers. The UI labels itself as a replay
+  everywhere it appears.
+
+### Why demo and live never collide
+
+`pnpm bake` snapshots the recorded run into dedicated **`replay_*`** collections
+(`replay_events`, `replay_analysis`, `replay_reviews`, `replay_audit`). Demo mode reads *only*
+those; live runs and resets touch *only* the working collections. So a presenter can switch modes,
+run live investigations, and reset — all without ever corrupting the demo recording. Re-baking is
+the only thing that rewrites the replay copies. (Isolation lives in `src/data/replay-store.ts`;
+`recordingSource(demoMode)` picks the read source per mode.) Run `pnpm beat:*` with the **same
+`DEMO_MODE`** as the server so the audit beats target the chain the console is verifying.
+
+## Stage beats (presenter)
+
+Each is a real database write; every connected console reacts through the change stream:
+
+```bash
+pnpm beat:policy    # touch a policy doc      -> "POLICY UPDATED LIVE" banner
+pnpm beat:tamper    # corrupt one audit field -> "AUDIT CHAIN BROKEN" alarm
+pnpm beat:restore   # undo the tampering      -> "AUDIT CHAIN RESTORED"
 ```
 
 ## Tests
@@ -21,6 +77,7 @@ curl localhost:8000/api/health   # { "status": "ok", "app": "Marshal" }
 ```bash
 pnpm test        # vitest run
 pnpm typecheck   # tsc --noEmit
+pnpm eval        # decision-quality scorecard over the labeled lanes (live agent required)
 ```
 
 See `docs/superpowers/specs/` for the design and `docs/superpowers/plans/` for the build plans.

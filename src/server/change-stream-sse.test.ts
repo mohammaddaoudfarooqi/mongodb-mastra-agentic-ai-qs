@@ -9,7 +9,7 @@ describe('change-stream SSE helpers', () => {
   it('sanitize passes null through', () => {
     expect(sanitize(null)).toBeNull();
   });
-  it('watches the control-room collections including the agent-events feed and analysis', () => {
-    expect(WATCHED_COLLECTIONS).toEqual(['transactions', 'cases', 'case_decisions', 'reviews', 'audit_trail', 'agent_events', 'case_analysis']);
+  it('watches the control-room collections including the agent-events feed, analysis and policies', () => {
+    expect(WATCHED_COLLECTIONS).toEqual(['transactions', 'cases', 'case_decisions', 'reviews', 'audit_trail', 'agent_events', 'case_analysis', 'policies']);
   });
 });

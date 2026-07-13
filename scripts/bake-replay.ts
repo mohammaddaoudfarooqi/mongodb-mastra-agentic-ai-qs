@@ -3,14 +3,15 @@ import { loadConfig } from '../src/config';
 import { logger } from '../src/observability/logger';
 import { runPendingInvestigations } from '../src/workflow/run-engine';
 import { loadTransactionSeed } from '../src/ingestion/transaction-fixtures';
+import { snapshotReplay } from '../src/data/replay-store';
 
 /**
- * Bake the deterministic demo replay: run the REAL agent pipeline once over every live case,
- * leaving a recorded run in MongoDB (case_analysis + an ordered agent_events timeline). The
- * DEMO_MODE UI then replays these docs with no runtime LLM.
+ * Bake the deterministic demo replay: run the REAL agent pipeline once over every live case, then
+ * snapshot the recorded run into immutable `replay_*` collections. DEMO_MODE reads ONLY those, so a
+ * later live run or reset can never corrupt the recording (the two modes share one cluster safely).
  *
  * Run this once at seed time (after `pnpm provision`), on the operator's machine / CI — not per
- * user. Idempotent: it resets prior run state, restores cases to pending, then investigates.
+ * user. Idempotent: it resets prior run state, restores cases to pending, investigates, snapshots.
  */
 async function main() {
   try { process.loadEnvFile(); } catch { /* .env optional */ }
@@ -34,6 +35,10 @@ async function main() {
   const events = await db.collection('agent_events').countDocuments();
   const analyses = await db.collection('case_analysis').countDocuments();
   logger.info('bake complete', { investigated, agent_events: events, case_analysis: analyses });
+
+  // Freeze the recording into the immutable replay copies demo mode reads from.
+  const snapshot = await snapshotReplay(db);
+  logger.info('replay snapshot written (demo mode reads these; live runs never touch them)', snapshot);
 
   await client.close();
 }
