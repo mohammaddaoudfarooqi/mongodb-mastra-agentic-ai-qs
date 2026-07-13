@@ -9,9 +9,18 @@ import type { EvidenceSnapshot } from '../workflow/evidence';
 import { runPendingInvestigations } from '../workflow/run-engine';
 import { loadTransactionSeed } from '../ingestion/transaction-fixtures';
 import { logger } from '../observability/logger';
+import { newSessionId, signToken, verifyToken, bearer } from './session';
 
 /** Mount the control-room API on an app. `hub` is a started ChangeStreamHub over the same Db. */
 export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub): void {
+  // Derive the caller's session id ONLY from a verified Bearer token (never the body).
+  const sidOf = (c: any): string | null => verifyToken(cfg.auditSecret, bearer(c.req.header('authorization')));
+
+  // Mint a stateless session token (per browser tab). No server-side session store.
+  app.post('/api/token', c => {
+    const sessionId = newSessionId();
+    return c.json({ token: signToken(cfg.auditSecret, sessionId), sessionId });
+  });
   // Case queue: recent transactions with their live status.
   app.get('/api/cases', async c => {
     const cases = await db.collection('transactions')
@@ -55,18 +64,29 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
     return c.json({ events });
   });
 
-  // Pending human-review gate.
+  // Pending human-review gate — the shared held cases MINUS the ones THIS session has already
+  // resolved (session-scoped so 100+ concurrent users each see/clear their own gate).
   app.get('/api/reviews', async c => {
+    const sid = sidOf(c);
     const reviews = await db.collection('reviews')
       .find({ status: 'pending_review' }, { projection: { _id: 0 } }).toArray();
-    return c.json({ reviews });
+    if (!sid) return c.json({ reviews });
+    const resolvedIds = new Set(
+      (await db.collection('session_resolutions').find({ sessionId: sid }, { projection: { transaction_id: 1 } }).toArray())
+        .map(r => r.transaction_id),
+    );
+    return c.json({ reviews: reviews.filter(r => !resolvedIds.has(r.transaction_id)) });
   });
 
-  // Resume a suspended case with a human verdict. The client sends ONLY the decision; the server
-  // loads the evidence snapshot + hash it persisted at suspend-time and verifies against those
-  // (never a client-reconstructed snapshot — that was the bug that made resolves always fail).
+  // Resume a suspended case with a human verdict. The client sends ONLY the decision.
+  //
+  // Concurrency: the human decision is recorded PER SESSION in `session_resolutions` (keyed by the
+  // token-derived sid), so 100+ users can each approve/reject the same held case independently
+  // without touching the shared replay data. In single-user (no-token) mode we also commit to the
+  // shared ledger for the full end-to-end demo (evidence-hash verified, ACID + audit chain).
   app.post('/api/reviews/:id/resolve', async c => {
     const id = c.req.param('id');
+    const sid = sidOf(c);
     const body = await c.req.json().catch(() => ({})) as { decision?: 'approve' | 'reject' };
     if (body.decision !== 'approve' && body.decision !== 'reject') {
       return c.json({ error: 'decision must be approve|reject' }, 400);
@@ -76,6 +96,18 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
       return c.json({ status: 'not_found', message: 'No pending review for this case.' }, 404);
     }
     const now = new Date().toISOString();
+
+    if (sid) {
+      // Session-scoped: record this user's decision; leave the shared replay pristine.
+      await db.collection('session_resolutions').updateOne(
+        { sessionId: sid, transaction_id: id },
+        { $set: { sessionId: sid, transaction_id: id, decision: body.decision, decided_at: new Date() } },
+        { upsert: true },
+      );
+      return c.json({ status: 'committed', decision: body.decision, scope: 'session' });
+    }
+
+    // No session (single-user / presenter): commit to the shared ledger with full verification.
     const res = await resolveReview(db, cfg.auditSecret, {
       transaction_id: id, human_decision: body.decision,
       echoed_evidence_hash: review.evidence_hash as string,
@@ -86,7 +118,7 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
     }
     await db.collection('reviews').updateOne({ transaction_id: id }, { $set: { status: 'resolved', reviewDecision: body.decision } });
     await db.collection('case_analysis').updateOne({ transaction_id: id }, { $set: { phase: 'committed', 'decision.reviewed_by': 'human', 'decision.disposition': body.decision } });
-    return c.json({ status: 'committed', decision: body.decision });
+    return c.json({ status: 'committed', decision: body.decision, scope: 'shared' });
   });
 
   // Runtime mode — the UI adapts labels and Launch behavior to this.
@@ -104,6 +136,15 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
   // (case_analysis + agent_events) — that is the recording — and only clear per-run decision
   // state. In live mode we clear everything (a fresh live run regenerates it).
   app.post('/api/reset', async c => {
+    const sid = sidOf(c);
+    // A session-scoped reset clears ONLY this user's resolutions — never the shared replay or
+    // another user's state. This is the safe path for 100+ concurrent attendees.
+    if (sid) {
+      await db.collection('session_resolutions').deleteMany({ sessionId: sid });
+      return c.json({ status: 'reset', scope: 'session', transactions: loadTransactionSeed().length, demoMode: cfg.demoMode });
+    }
+    // No session (single-user / presenter): full reset. In DEMO mode keep the bake; in LIVE mode
+    // clear everything so a fresh live run regenerates it.
     const clear = cfg.demoMode
       ? ['case_decisions', 'reviews', 'audit_trail']
       : ['cases', 'case_decisions', 'reviews', 'audit_trail', 'agent_events', 'case_analysis'];
@@ -112,7 +153,7 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
     for (const s of seed) {
       await db.collection('transactions').updateOne({ transaction_id: s.transaction_id }, { $set: { status: s.status } });
     }
-    return c.json({ status: 'reset', transactions: seed.length, demoMode: cfg.demoMode });
+    return c.json({ status: 'reset', scope: 'shared', transactions: seed.length, demoMode: cfg.demoMode });
   });
 
   // LAUNCH. In DEMO mode this is a no-op signal — the client drives a deterministic replay of the

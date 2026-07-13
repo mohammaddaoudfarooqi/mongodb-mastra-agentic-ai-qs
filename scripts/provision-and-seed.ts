@@ -37,6 +37,11 @@ async function main() {
     const policies = await seedPolicies(db, embed);
     logger.info('seeded policies', { policies });
 
+    // Per-session state: index by session, TTL 24h so demo sessions self-clean.
+    await db.collection('session_resolutions').createIndex({ sessionId: 1 }).catch(() => {});
+    await db.collection('session_resolutions').createIndex({ decided_at: 1 }, { expireAfterSeconds: 86400 }).catch(() => {});
+    logger.info('provisioned session_resolutions (indexed + 24h TTL)');
+
     logger.info('provision-and-seed complete');
   } finally {
     await client.close();

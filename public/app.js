@@ -1,5 +1,24 @@
 import { mongoLeafSVG, mastraMarkSVG } from '/brand.js';
 const $ = s => document.querySelector(s);
+
+// ---- session token (stateless; per browser tab) ----------------------------
+const TOKEN_KEY = 'marshal-token';
+async function getToken() {
+  let tok = sessionStorage.getItem(TOKEN_KEY);
+  if (tok) return tok;
+  const d = await fetch('/api/token', { method: 'POST' }).then(r => r.json()).catch(() => null);
+  if (d?.token) { sessionStorage.setItem(TOKEN_KEY, d.token); return d.token; }
+  return null;
+}
+// fetch wrapper that attaches the Bearer token (self-heals once on 401).
+async function api(path, opts = {}) {
+  const tok = await getToken();
+  const headers = { ...(opts.headers || {}) };
+  if (tok) headers.authorization = `Bearer ${tok}`;
+  let res = await fetch(path, { ...opts, headers });
+  if (res.status === 401) { sessionStorage.removeItem(TOKEN_KEY); const t2 = await getToken(); if (t2) { headers.authorization = `Bearer ${t2}`; res = await fetch(path, { ...opts, headers }); } }
+  return res;
+}
 function renderLockup() {
   const el = $('#lockup');
   if (el) el.innerHTML = mongoLeafSVG(24) + '<span class="divider"></span>' + mastraMarkSVG(20);
@@ -37,6 +56,8 @@ function bumpCap(key) {
 
 // ---- case queue -------------------------------------------------------------
 let selected = null;
+// This session's own human decisions (per-user, doesn't touch shared replay data).
+const sessionResolved = {};
 function caseCard(t) {
   const el = document.createElement('div');
   el.className = `case s-${t.status}` + (selected === t.transaction_id ? ' sel' : '');
@@ -82,7 +103,9 @@ async function openCase(id) {
   const gov = a.governance || {}; const ring = a.ring || {}; const dec = a.decision || {};
   const scorePct = Math.round((gov.compliance_score ?? 1) * 100);
   const scoreColor = scorePct < 70 ? 'var(--crit)' : scorePct < 90 ? 'var(--warn)' : 'var(--accent)';
-  const held = a.phase === 'suspended';
+  // If THIS session already resolved the case, reflect the user's own decision (not the gate).
+  const myDecision = sessionResolved[id];
+  const held = a.phase === 'suspended' && !myDecision;
 
   detail.innerHTML = `
     <div class="dhead">
@@ -105,11 +128,11 @@ async function openCase(id) {
       <div class="meter"><i style="width:${scorePct}%;background:${scoreColor}"></i></div>
       <div style="margin-top:9px">${(gov.violations || []).map(v => `<div class="mini policy"><b class="mono">${esc(v.policy_code)}</b> <span class="pill escalated">${esc(v.severity)}</span><div class="sub">${esc(v.cited_text)}</div></div>`).join('') || '<div class="sub dim">no policy violations</div>'}</div></div>
 
-    <div class="verdict ${held ? 'held' : dec.disposition}">
-      <div><div class="sub dim">${held ? 'awaiting human decision' : `decided by ${esc(dec.decided_by)}`}</div>
-        <div class="d">${held ? 'Escalate' : (dec.disposition || '')}</div></div>
+    <div class="verdict ${held ? 'held' : (myDecision || dec.disposition)}">
+      <div><div class="sub dim">${held ? 'awaiting your decision' : (myDecision ? 'your decision' : `decided by ${esc(dec.decided_by)}`)}</div>
+        <div class="d">${held ? 'Escalate' : (myDecision || dec.disposition || '')}</div></div>
       ${held ? `<div class="actions"><button class="btn approve" data-approve>✓ Approve</button><button class="btn reject" data-reject>✕ Reject</button></div>`
-             : `<span class="pill ${dec.disposition}">committed</span>`}
+             : `<span class="pill ${myDecision || dec.disposition}">committed</span>`}
     </div>
 
     <div class="section"><details><summary>Agent rationale & risk factors</summary>
@@ -136,10 +159,11 @@ async function resolve(id, decision) {
   const detail = $('#detail');
   detail.querySelectorAll('.actions .btn').forEach(b => b.disabled = true);
   setStatus(`Committing ${decision} for ${id}…`);
-  const res = await fetch(`/api/reviews/${encodeURIComponent(id)}/resolve`, {
+  const res = await api(`/api/reviews/${encodeURIComponent(id)}/resolve`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decision }),
   }).then(r => r.json()).catch(e => ({ status: 'error', message: String(e) }));
   if (res.status === 'committed') {
+    sessionResolved[id] = decision;
     addFeed('🧑‍⚖️', 'human', id, `Human ${decision} committed`, 'commit');
     setStatus(`${id} → ${decision}`); setTimeout(() => setStatus(''), 2500);
     await loadQueue(); openCase(id);
@@ -236,12 +260,12 @@ function wire() {
     addFeed('🚀', 'system', '', DEMO_MODE ? 'Launch — replaying recorded investigation' : 'Launch — investigating all pending cases', 'commit');
     if (DEMO_MODE) {
       setStatus('Replaying investigation — watch the rail →');
-      try { await fetch('/api/investigate/run', { method: 'POST' }); } catch {}
+      try { await api('/api/investigate/run', { method: 'POST' }); } catch {}
       runReplay();
       return;
     }
     setStatus('Investigation running — watch the rail light up →');
-    try { await fetch('/api/investigate/run', { method: 'POST' }); } catch (e) { setStatus('Launch failed'); }
+    try { await api('/api/investigate/run', { method: 'POST' }); } catch (e) { setStatus('Launch failed'); }
     setTimeout(() => { b.disabled = false; b.textContent = '▶ Launch Investigation'; setStatus(''); }, 150000);
   });
   $('#resetBtn').addEventListener('click', async () => {
@@ -249,8 +273,9 @@ function wire() {
     clearInterval(replayTimer);
     $('#launchBtn').disabled = false; $('#launchBtn').textContent = '▶ Launch Investigation';
     try {
-      const r = await fetch('/api/reset', { method: 'POST' }).then(x => x.json());
+      const r = await api('/api/reset', { method: 'POST' }).then(x => x.json());
       $('#feed').innerHTML = ''; for (const k in capCounts) delete capCounts[k]; renderRail();
+      for (const k in sessionResolved) delete sessionResolved[k];
       selected = null; $('#detail').classList.remove('show'); $('#welcome').style.display = 'flex';
       addFeed('↺', 'system', '', `Reset — ${r.transactions ?? ''} cases pending`, 'reset');
       await loadQueue(); setStatus('Reset complete'); setTimeout(() => setStatus(''), 2000);
