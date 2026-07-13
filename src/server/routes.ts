@@ -89,24 +89,37 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
     return c.json({ status: 'committed', decision: body.decision });
   });
 
-  // Reset to a clean all-pending slate for a fresh demo run (keeps the seeded transactions +
-  // their embeddings; only clears run-derived state and re-sets every transaction to pending).
+  // Runtime mode — the UI adapts labels and Launch behavior to this.
+  app.get('/api/mode', c => c.json({ demoMode: cfg.demoMode }));
+
+  // Replay data (demo mode): the pre-baked recorded run — ordered agent_events + per-case
+  // analyses. The client animates these instead of calling the live agent. Read-only + shared.
+  app.get('/api/replay', async c => {
+    const events = await db.collection('agent_events').find({}, { projection: { _id: 0 } }).sort({ ts: 1 }).toArray();
+    const analyses = await db.collection('case_analysis').find({}, { projection: { _id: 0 } }).toArray();
+    return c.json({ events, analyses });
+  });
+
+  // Reset to a clean all-pending slate. In DEMO mode we KEEP the baked replay
+  // (case_analysis + agent_events) — that is the recording — and only clear per-run decision
+  // state. In live mode we clear everything (a fresh live run regenerates it).
   app.post('/api/reset', async c => {
-    for (const n of ['cases', 'case_decisions', 'reviews', 'audit_trail', 'agent_events', 'case_analysis']) {
-      await db.collection(n).deleteMany({});
-    }
-    // Restore each transaction's status to its seed value (live cases -> pending, historical keep decided).
+    const clear = cfg.demoMode
+      ? ['case_decisions', 'reviews', 'audit_trail']
+      : ['cases', 'case_decisions', 'reviews', 'audit_trail', 'agent_events', 'case_analysis'];
+    for (const n of clear) await db.collection(n).deleteMany({});
     const seed = loadTransactionSeed();
     for (const s of seed) {
       await db.collection('transactions').updateOne({ transaction_id: s.transaction_id }, { $set: { status: s.status } });
     }
-    return c.json({ status: 'reset', transactions: seed.length });
+    return c.json({ status: 'reset', transactions: seed.length, demoMode: cfg.demoMode });
   });
 
-  // LAUNCH: investigate every pending case with the real agent pipeline, emitting step events the
-  // change stream surfaces to the ops feed. Fire-and-forget so the HTTP call returns immediately;
-  // the UI watches progress live via /api/stream.
+  // LAUNCH. In DEMO mode this is a no-op signal — the client drives a deterministic replay of the
+  // baked run (no LLM). In LIVE mode it runs the real agent pipeline (fire-and-forget; the UI
+  // watches progress via /api/stream).
   app.post('/api/investigate/run', async c => {
+    if (cfg.demoMode) return c.json({ status: 'replay' });
     runPendingInvestigations(db, cfg)
       .then(r => logger.info('investigation run complete', r))
       .catch(err => logger.error('investigation run failed', { err: String(err) }));

@@ -15,6 +15,12 @@ export interface Config {
   rrfK: number;
   /** HMAC secret for the append-only audit chain. Host-side only; never stored in records. */
   auditSecret: string;
+  /**
+   * Demo mode. false (default) = prod quickstart: Launch runs the live Mastra agent + real LLM.
+   * true = stage/booth: Launch REPLAYS a pre-baked recorded run (case_analysis + agent_events)
+   * with no runtime LLM — deterministic, instant, free, scales to any number of viewers.
+   */
+  demoMode: boolean;
 }
 
 const EnvSchema = z.object({
@@ -32,6 +38,7 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8000),
   RRF_K: z.coerce.number().int().positive().default(60),
   AUDIT_SECRET: z.string().min(1).default('marshal-dev-audit-secret'),
+  DEMO_MODE: z.string().optional(),
 });
 
 export function loadConfig(
@@ -52,5 +59,6 @@ export function loadConfig(
     port: e.PORT,
     rrfK: e.RRF_K,
     auditSecret: e.AUDIT_SECRET,
+    demoMode: (e.DEMO_MODE ?? '').toLowerCase() === 'true' || e.DEMO_MODE === '1',
   };
 }

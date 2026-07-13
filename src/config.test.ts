@@ -21,4 +21,10 @@ describe('loadConfig', () => {
     expect(c.port).toBe(8000);
     expect(c.rrfK).toBe(60);
   });
+  it('demoMode defaults off and turns on for true/1', () => {
+    expect(loadConfig(base).demoMode).toBe(false);
+    expect(loadConfig({ ...base, DEMO_MODE: 'true' }).demoMode).toBe(true);
+    expect(loadConfig({ ...base, DEMO_MODE: '1' }).demoMode).toBe(true);
+    expect(loadConfig({ ...base, DEMO_MODE: 'false' }).demoMode).toBe(false);
+  });
 });

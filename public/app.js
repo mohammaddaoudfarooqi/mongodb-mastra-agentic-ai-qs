@@ -203,16 +203,51 @@ function connect() {
   });
 }
 
+let DEMO_MODE = false;
+let replayTimer = null;
+
+// Deterministic replay (demo mode): animate the pre-baked recorded run — no LLM, instant, free.
+async function runReplay() {
+  const { events = [], analyses = [] } = await fetch('/api/replay').then(r => r.json()).catch(() => ({}));
+  if (!events.length) { setStatus('No baked replay found — run `pnpm bake` first.'); return; }
+  const byId = Object.fromEntries(analyses.map(a => [a.transaction_id, a]));
+  let i = 0;
+  const stepMs = 420; // pacing per event; ~feels like a live run but instant overall
+  clearInterval(replayTimer);
+  replayTimer = setInterval(async () => {
+    if (i >= events.length) {
+      clearInterval(replayTimer);
+      $('#launchBtn').disabled = false; $('#launchBtn').textContent = '▶ Launch Investigation';
+      setStatus('Replay complete'); setTimeout(() => setStatus(''), 2500);
+      await loadQueue();
+      return;
+    }
+    const d = events[i++];
+    addFeed(STEP_ICON[d.step], `agent · ${d.step || ''}`, d.transaction_id, d.headline, d.step, d.detail);
+    (d.capabilities || (d.capability ? [d.capability] : [])).forEach(bumpCap);
+    // On the terminal step of a case, reflect its outcome in the queue.
+    if (d.step === 'commit' || d.step === 'suspend') { await loadQueue(); }
+  }, stepMs);
+}
+
 function wire() {
   $('#launchBtn').addEventListener('click', async () => {
     const b = $('#launchBtn'); b.disabled = true; b.textContent = 'Investigating…';
+    addFeed('🚀', 'system', '', DEMO_MODE ? 'Launch — replaying recorded investigation' : 'Launch — investigating all pending cases', 'commit');
+    if (DEMO_MODE) {
+      setStatus('Replaying investigation — watch the rail →');
+      try { await fetch('/api/investigate/run', { method: 'POST' }); } catch {}
+      runReplay();
+      return;
+    }
     setStatus('Investigation running — watch the rail light up →');
-    addFeed('🚀', 'system', '', 'Launch — investigating all pending cases', 'commit');
     try { await fetch('/api/investigate/run', { method: 'POST' }); } catch (e) { setStatus('Launch failed'); }
     setTimeout(() => { b.disabled = false; b.textContent = '▶ Launch Investigation'; setStatus(''); }, 150000);
   });
   $('#resetBtn').addEventListener('click', async () => {
     const b = $('#resetBtn'); b.disabled = true; setStatus('Resetting…');
+    clearInterval(replayTimer);
+    $('#launchBtn').disabled = false; $('#launchBtn').textContent = '▶ Launch Investigation';
     try {
       const r = await fetch('/api/reset', { method: 'POST' }).then(x => x.json());
       $('#feed').innerHTML = ''; for (const k in capCounts) delete capCounts[k]; renderRail();
@@ -279,5 +314,13 @@ function initTour() {
   if (!localStorage.getItem('marshal-tour-seen')) setTimeout(startTour, 700);
 }
 
-function boot() { renderLockup(); initTheme(); renderRail(); wire(); initTour(); loadQueue(); loadCaps(); backfillFeed(); refreshAudit(); connect(); }
+async function loadMode() {
+  const m = await fetch('/api/mode').then(r => r.json()).catch(() => ({ demoMode: false }));
+  DEMO_MODE = !!m.demoMode;
+  if (DEMO_MODE) {
+    const tag = document.querySelector('.tag');
+    if (tag) tag.textContent = 'MongoDB Atlas + Mastra · Demo (recorded run)';
+  }
+}
+function boot() { renderLockup(); initTheme(); renderRail(); wire(); initTour(); loadMode(); loadQueue(); loadCaps(); backfillFeed(); refreshAudit(); connect(); }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
