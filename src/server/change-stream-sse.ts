@@ -31,6 +31,9 @@ export class ChangeStreamHub {
       this.stream.on('change', (change: any) => {
         const collection = change.ns?.coll as string;
         if (!WATCHED_COLLECTIONS.includes(collection)) return;
+        // Deletes are maintenance (Reset clears collections) with no document to project — never
+        // surface them to the UI. Only inserts/updates/replaces carry meaningful state.
+        if (change.operationType === 'delete') return;
         const ev: ChangeEvent = {
           type: 'change', collection, operation: change.operationType,
           doc: sanitize(change.fullDocument ?? change.documentKey ?? null),

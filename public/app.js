@@ -105,8 +105,11 @@ function connect() {
   es.addEventListener('error', () => $('#live').classList.remove('on'));
   es.addEventListener('change', e => {
     const ev = JSON.parse(e.data);
+    // Ignore deletes — they're maintenance (Reset clears collections), not agent activity, and
+    // carry no document to show. Only meaningful writes drive the feed, counters, and panels.
+    if (ev.operation === 'delete') return;
     bumpCounter(ev.collection);
-    // agent_events are the rich, human-readable investigation steps — render those in the feed.
+    // agent_events inserts are the rich, human-readable investigation steps — render those.
     if (ev.collection === 'agent_events' && ev.operation === 'insert') {
       const d = ev.doc || {};
       addFeed(d.step ? `agent · ${d.step}` : 'agent', d.transaction_id, d.headline ?? '', d.step, d.detail);
