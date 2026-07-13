@@ -1,4 +1,11 @@
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+
+/** Timing-safe comparison of two hex MAC strings (lengths may differ → not equal). */
+function macEqual(a: string, b: string): boolean {
+  const ba = Buffer.from(a, 'hex');
+  const bb = Buffer.from(b, 'hex');
+  return ba.length === bb.length && timingSafeEqual(ba, bb);
+}
 
 /**
  * Stateless session tokens (mirrors the MongodbUnpacked pattern). A token is a self-contained
@@ -21,8 +28,9 @@ export function verifyToken(secret: string, token: string | undefined, now = Dat
   if (!sid || !exp || !mac) return null;
   if (Number(exp) < Math.floor(now / 1000)) return null;
   const good = createHmac('sha256', secret).update(`${sid}.${exp}`).digest('hex');
-  // constant-length compare (hex strings of equal length); mismatch → reject.
-  return good === mac ? sid : null;
+  // Timing-safe HMAC comparison (crypto.timingSafeEqual) — does NOT short-circuit on the first
+  // differing byte, so it leaks no per-byte timing signal.
+  return macEqual(good, mac) ? sid : null;
 }
 
 /** Extract a Bearer token from an Authorization header value. */

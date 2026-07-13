@@ -31,21 +31,16 @@ async function deriveEvidenceSnapshot(db: Db, transactionId: string): Promise<Ev
 
 /** Mount the control-room API on an app. `hub` is a started ChangeStreamHub over the same Db. */
 export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub): void {
-  // Derive the caller's session id ONLY from a verified Bearer token (never the body).
-  const sidOf = (c: any): string | null => verifyToken(cfg.auditSecret, bearer(c.req.header('authorization')));
-
-  // Guard for state-mutating routes (review finding #7): require a valid session token, which the
-  // SPA always mints. This blocks anonymous / cross-site callers from resetting state, triggering
-  // expensive investigations, or resolving reviews. Returns the sid, or null after sending 401.
-  const requireSid = (c: any): string | null => {
-    const sid = sidOf(c);
-    return sid;
-  };
+  // Derive the caller's session id ONLY from a verified Bearer token (never the body). Signed with
+  // the dedicated SESSION secret — kept separate from the audit-chain secret so neither can forge
+  // the other. State-mutating routes call this and return 401 when it is null (blocks anonymous /
+  // cross-site callers from resetting state, launching runs, or resolving reviews — finding #7).
+  const sidOf = (c: any): string | null => verifyToken(cfg.sessionSecret, bearer(c.req.header('authorization')));
 
   // Mint a stateless session token (per browser tab). No server-side session store.
   app.post('/api/token', c => {
     const sessionId = newSessionId();
-    return c.json({ token: signToken(cfg.auditSecret, sessionId), sessionId });
+    return c.json({ token: signToken(cfg.sessionSecret, sessionId), sessionId });
   });
   // Case queue: recent transactions with their live status.
   app.get('/api/cases', async c => {
@@ -104,15 +99,15 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
     return c.json({ reviews: reviews.filter(r => !resolvedIds.has(r.transaction_id)) });
   });
 
-  // Resume a suspended case with a human verdict. The client sends ONLY the decision.
+  // Resume a suspended case with a human verdict. A valid session token is required (401 otherwise);
+  // the client sends ONLY the decision.
   //
-  // Concurrency: the human decision is recorded PER SESSION in `session_resolutions` (keyed by the
-  // token-derived sid), so 100+ users can each approve/reject the same held case independently
-  // without touching the shared replay data. In single-user (no-token) mode we also commit to the
-  // shared ledger for the full end-to-end demo (evidence-hash verified, ACID + audit chain).
+  // DEMO mode: the decision is recorded PER SESSION in `session_resolutions`, so 100+ users can each
+  // approve/reject the same held case independently without touching the shared replay.
+  // LIVE mode: commit to the shared ledger with full verification (evidence-hash + ACID + audit).
   app.post('/api/reviews/:id/resolve', async c => {
     const id = c.req.param('id');
-    const sid = requireSid(c);
+    const sid = sidOf(c);
     if (!sid) return c.json({ error: 'unauthorized — missing/invalid session token' }, 401);
     const body = await c.req.json().catch(() => ({})) as { decision?: 'approve' | 'reject' };
     if (body.decision !== 'approve' && body.decision !== 'reject') {
@@ -146,24 +141,30 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
     );
     if (!claim) return c.json({ status: 'already_resolved', message: 'This case was already resolved.' }, 409);
 
-    // Real stale-evidence check (review finding #2): re-derive the evidence snapshot from CURRENT
-    // case/transaction state and compare its hash to the one stored at suspend-time. If the case
-    // changed since the reviewer saw it, the hash won't match and we refuse — instead of comparing
-    // the stored snapshot to itself (which could never drift).
-    const currentSnapshot = await deriveEvidenceSnapshot(db, id);
-    const res = await resolveReview(db, cfg.auditSecret, {
-      transaction_id: id, human_decision: body.decision,
-      echoed_evidence_hash: review.evidence_hash as string,
-      current: (currentSnapshot ?? review.snapshot) as EvidenceSnapshot, now,
-    });
-    if (res.status === 'rejected_stale') {
-      // Release the claim so a corrected retry is possible.
-      await db.collection('reviews').updateOne({ transaction_id: id }, { $set: { status: 'pending_review' } });
-      return c.json({ status: 'rejected_stale', message: 'Evidence changed since review.' }, 409);
+    // Everything after the claim runs in try/catch so ANY failure (a DB blip mid-transaction, a
+    // stale-evidence refusal) releases the claim back to pending_review — the review can never get
+    // stuck in 'resolving' and become un-retryable (review finding #3).
+    try {
+      // Real stale-evidence check (review finding #2): re-derive the evidence snapshot from CURRENT
+      // case/transaction state and compare its hash to the one stored at suspend-time.
+      const currentSnapshot = await deriveEvidenceSnapshot(db, id);
+      const res = await resolveReview(db, cfg.auditSecret, {
+        transaction_id: id, human_decision: body.decision,
+        echoed_evidence_hash: review.evidence_hash as string,
+        current: (currentSnapshot ?? review.snapshot) as EvidenceSnapshot, now,
+      });
+      if (res.status === 'rejected_stale') {
+        await db.collection('reviews').updateOne({ transaction_id: id }, { $set: { status: 'pending_review' } });
+        return c.json({ status: 'rejected_stale', message: 'Evidence changed since review.' }, 409);
+      }
+      await db.collection('reviews').updateOne({ transaction_id: id }, { $set: { status: 'resolved', reviewDecision: body.decision } });
+      await db.collection('case_analysis').updateOne({ transaction_id: id }, { $set: { phase: 'committed', 'decision.reviewed_by': 'human', 'decision.disposition': body.decision } });
+      return c.json({ status: 'committed', decision: body.decision, scope: 'shared' });
+    } catch (err) {
+      await db.collection('reviews').updateOne({ transaction_id: id }, { $set: { status: 'pending_review' } }).catch(() => {});
+      logger.error('resolve failed; released claim', { transaction_id: id, err: String(err) });
+      return c.json({ status: 'error', message: 'Could not commit the decision; please retry.' }, 500);
     }
-    await db.collection('reviews').updateOne({ transaction_id: id }, { $set: { status: 'resolved', reviewDecision: body.decision } });
-    await db.collection('case_analysis').updateOne({ transaction_id: id }, { $set: { phase: 'committed', 'decision.reviewed_by': 'human', 'decision.disposition': body.decision } });
-    return c.json({ status: 'committed', decision: body.decision, scope: 'shared' });
   });
 
   // Runtime mode — the UI adapts labels and Launch behavior to this.
@@ -181,7 +182,7 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
   // (case_analysis + agent_events) — that is the recording — and only clear per-run decision
   // state. In live mode we clear everything (a fresh live run regenerates it).
   app.post('/api/reset', async c => {
-    const sid = requireSid(c);
+    const sid = sidOf(c);
     if (!sid) return c.json({ error: 'unauthorized — missing/invalid session token' }, 401);
     // In DEMO mode a reset clears ONLY this user's resolutions — never the shared replay or another
     // user's state (safe for 100+ concurrent attendees).
@@ -204,7 +205,7 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
   // watches progress via /api/stream).
   let runInFlight = false; // in-process guard: don't double-process the same pending set (finding #5)
   app.post('/api/investigate/run', async c => {
-    if (!requireSid(c)) return c.json({ error: 'unauthorized — missing/invalid session token' }, 401);
+    if (!sidOf(c)) return c.json({ error: 'unauthorized — missing/invalid session token' }, 401);
     if (cfg.demoMode) return c.json({ status: 'replay' });
     if (runInFlight) return c.json({ status: 'already_running' }, 409);
     runInFlight = true;

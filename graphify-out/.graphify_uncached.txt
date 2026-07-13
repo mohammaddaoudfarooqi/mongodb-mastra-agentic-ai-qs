@@ -1,0 +1,11 @@
+/Users/mdf/git/mdf/mongodb-mastra-agentic-ai-qs/.playwright-cli/page-2026-07-13T08-57-19-170Z.yml
+/Users/mdf/git/mdf/mongodb-mastra-agentic-ai-qs/.playwright-cli/page-2026-07-13T08-57-50-770Z.yml
+/Users/mdf/git/mdf/mongodb-mastra-agentic-ai-qs/README.md
+/Users/mdf/git/mdf/mongodb-mastra-agentic-ai-qs/docs/superpowers/plans/2026-07-13-marshal-00-bootstrap.md
+/Users/mdf/git/mdf/mongodb-mastra-agentic-ai-qs/docs/superpowers/plans/2026-07-13-marshal-01-data-layer-and-seed.md
+/Users/mdf/git/mdf/mongodb-mastra-agentic-ai-qs/docs/superpowers/plans/2026-07-13-marshal-demo-mode-and-sessions.md
+/Users/mdf/git/mdf/mongodb-mastra-agentic-ai-qs/docs/superpowers/specs/2026-07-13-fraud-investigation-console-design.md
+/Users/mdf/git/mdf/mongodb-mastra-agentic-ai-qs/pnpm-workspace.yaml
+/Users/mdf/git/mdf/mongodb-mastra-agentic-ai-qs/public/index.html
+/Users/mdf/git/mdf/mongodb-mastra-agentic-ai-qs/public/MongoDB_White.svg
+/Users/mdf/git/mdf/mongodb-mastra-agentic-ai-qs/public/favicon.svg

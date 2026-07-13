@@ -15,6 +15,8 @@ export interface Config {
   rrfK: number;
   /** HMAC secret for the append-only audit chain. Host-side only; never stored in records. */
   auditSecret: string;
+  /** SEPARATE HMAC secret for signing/verifying session tokens (not reused for the audit chain). */
+  sessionSecret: string;
   /**
    * Demo mode. false (default) = prod quickstart: Launch runs the live Mastra agent + real LLM.
    * true = stage/booth: Launch REPLAYS a pre-baked recorded run (case_analysis + agent_events)
@@ -37,14 +39,34 @@ const EnvSchema = z.object({
   BEDROCK_REGION: z.string().optional(),
   PORT: z.coerce.number().int().positive().default(8000),
   RRF_K: z.coerce.number().int().positive().default(60),
-  AUDIT_SECRET: z.string().min(1).default('marshal-dev-audit-secret'),
+  // Secrets: no schema default. A dev fallback is applied in loadConfig ONLY for non-production /
+  // demo runs; production with a live agent must set real secrets or startup fails (see below).
+  AUDIT_SECRET: z.string().optional(),
+  SESSION_SECRET: z.string().optional(),
+  NODE_ENV: z.string().optional(),
   DEMO_MODE: z.string().optional(),
 });
+
+const DEV_AUDIT_SECRET = 'marshal-dev-audit-secret';
+const DEV_SESSION_SECRET = 'marshal-dev-session-secret';
 
 export function loadConfig(
   env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
 ): Config {
   const e = EnvSchema.parse(env);
+  const demoMode = (e.DEMO_MODE ?? '').toLowerCase() === 'true' || e.DEMO_MODE === '1';
+  // Fail fast: a production deployment running the LIVE agent must supply real secrets — never
+  // ship the forgeable dev defaults for the audit chain or session tokens. Demo/non-prod may
+  // fall back to dev secrets for convenience.
+  const isProd = (e.NODE_ENV ?? '').toLowerCase() === 'production';
+  if (isProd && !demoMode) {
+    if (!e.AUDIT_SECRET) throw new Error('AUDIT_SECRET must be set in production (no default).');
+    if (!e.SESSION_SECRET) throw new Error('SESSION_SECRET must be set in production (no default).');
+  }
+  const auditSecret = e.AUDIT_SECRET ?? DEV_AUDIT_SECRET;
+  // Session secret defaults to its own dev value — and, importantly, is NEVER the audit secret,
+  // so a leaked/guessed audit secret can't forge session tokens (and vice-versa).
+  const sessionSecret = e.SESSION_SECRET ?? DEV_SESSION_SECRET;
   return {
     appName: e.APP_NAME,
     mongoUri: e.MONGODB_URI,
@@ -58,7 +80,8 @@ export function loadConfig(
     bedrockRegion: e.BEDROCK_REGION,
     port: e.PORT,
     rrfK: e.RRF_K,
-    auditSecret: e.AUDIT_SECRET,
-    demoMode: (e.DEMO_MODE ?? '').toLowerCase() === 'true' || e.DEMO_MODE === '1',
+    auditSecret,
+    sessionSecret,
+    demoMode,
   };
 }

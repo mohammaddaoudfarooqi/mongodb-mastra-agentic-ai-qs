@@ -16,12 +16,14 @@ export function createApp(cfg: Config, deps?: { db: Db; hub: ChangeStreamHub }):
   app.get('/api/health', c => c.json({ status: 'ok', app: cfg.appName }));
   if (deps) {
     mountRoutes(app, cfg, deps.db, deps.hub);
-    // No-cache the SPA so a plain browser refresh always loads current index.html/app.js
-    // (avoids the "stale cached JS = buttons look broken" class of problem).
+    // No-cache the SPA shell so a plain browser refresh always loads current index.html/app.js
+    // (avoids the "stale cached JS = buttons look broken" class of problem). Scoped explicitly to
+    // static asset extensions and "/" and EXCLUDES /api/* — so this can never accidentally alter
+    // an API response's headers even if a future route is added under the same catch-all.
+    const isSpaAsset = (p: string) => !p.startsWith('/api/') && (p === '/' || /\.(html|js|css|svg|ico)$/.test(p));
     app.use('/*', async (c, next) => {
       await next();
-      const p = new URL(c.req.url).pathname;
-      if (p === '/' || p.endsWith('.html') || p.endsWith('.js') || p.endsWith('.css')) {
+      if (isSpaAsset(new URL(c.req.url).pathname)) {
         c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
       }
     });
