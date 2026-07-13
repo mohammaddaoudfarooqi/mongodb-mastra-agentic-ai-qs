@@ -36,10 +36,11 @@ function caseCard(t) {
   const el = document.createElement('div');
   el.className = `case s-${t.status}` + (selected === t.transaction_id ? ' sel' : '');
   el.dataset.id = t.transaction_id;
+  const isPrecedent = t.model_used === 'historical';
   el.innerHTML = `
     <div class="row"><span class="amt">${money(t.amount)}</span><span class="pill ${t.status}">${t.status}</span></div>
     <div class="sub">${esc(t.sender?.name)} → ${esc(t.recipient?.name)}</div>
-    <div class="sub dim mono">${esc(t.transaction_id)} · ${esc(t.lane)}</div>`;
+    <div class="sub dim mono">${esc(t.transaction_id)} · ${esc(t.lane)}${isPrecedent ? ' · <span style="opacity:.8">precedent</span>' : ''}</div>`;
   el.onclick = () => openCase(t.transaction_id);
   return el;
 }
@@ -60,6 +61,19 @@ async function openCase(id) {
   const welcome = $('#welcome'), detail = $('#detail');
   if (!a) { welcome.style.display = 'flex'; detail.classList.remove('show'); detail.innerHTML = ''; return; }
   welcome.style.display = 'none'; detail.classList.add('show');
+
+  // Not investigated this run (a historical/seed precedent) — show a reference card, not a dead click.
+  if (a.analyzed === false) {
+    detail.innerHTML = `
+      <div class="dhead">
+        <div><div class="amt">${money(a.amount)}</div><div class="id">${esc(id)} · ${esc(a.lane)}</div></div>
+        <span class="pill ${a.status}">${esc(a.status)}</span>
+      </div>
+      <div class="flow">${esc(a.sender?.name)} <span class="dim">(${esc(a.sender?.account_number)})</span> → ${esc(a.recipient?.name)} <span class="dim">(${esc(a.recipient?.account_number)})</span></div>
+      <div class="section"><div class="mini"><b>Reference precedent</b><div class="sub" style="margin-top:6px">${esc(a.narrative)}</div></div></div>
+      <div class="section sub dim">This case is part of the decided-precedent corpus — the agent retrieves it as evidence when investigating new transactions. Press <b style="color:var(--mongo)">▶ Launch Investigation</b> to watch a live case get decided end-to-end.</div>`;
+    return;
+  }
   const gov = a.governance || {}; const ring = a.ring || {}; const dec = a.decision || {};
   const scorePct = Math.round((gov.compliance_score ?? 1) * 100);
   const scoreColor = scorePct < 70 ? 'var(--crit)' : scorePct < 90 ? 'var(--warn)' : 'var(--accent)';

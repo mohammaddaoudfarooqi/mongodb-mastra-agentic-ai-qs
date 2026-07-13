@@ -21,10 +21,19 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
   });
 
   // Full analysis for one case — powers the case-detail drill-down (projection of stored data).
+  // If the case hasn't been investigated this run (e.g. a historical/seed precedent), fall back
+  // to the raw transaction so the UI can still show a "reference precedent" card instead of a
+  // dead click.
   app.get('/api/cases/:id', async c => {
-    const doc = await db.collection('case_analysis').findOne({ transaction_id: c.req.param('id') }, { projection: { _id: 0 } });
-    if (!doc) return c.json({ error: 'not_analyzed' }, 404);
-    return c.json(doc);
+    const id = c.req.param('id');
+    const doc = await db.collection('case_analysis').findOne({ transaction_id: id }, { projection: { _id: 0 } });
+    if (doc) return c.json({ ...doc, analyzed: true });
+    const txn = await db.collection('transactions').findOne({ transaction_id: id }, { projection: { _id: 0, embedding: 0 } });
+    if (!txn) return c.json({ error: 'not_found' }, 404);
+    return c.json({
+      analyzed: false, transaction_id: id, amount: txn.amount, lane: txn.lane,
+      sender: txn.sender, recipient: txn.recipient, narrative: txn.text, status: txn.status,
+    });
   });
 
   // Capability rollup — how many times each MongoDB capability has been exercised (capability rail).
