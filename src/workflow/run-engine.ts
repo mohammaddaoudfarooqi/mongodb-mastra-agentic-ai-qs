@@ -16,8 +16,10 @@ export const CASE_ANALYSIS_COLLECTION = 'case_analysis';
 /** The MongoDB capabilities each investigation exercises — surfaced to the UI capability rail. */
 export type Capability = 'vector' | 'fulltext' | 'hybrid' | 'graph' | 'memory' | 'governance' | 'durable' | 'audit';
 
-async function emit(db: Db, e: { transaction_id: string; step: string; headline: string; detail?: string; capability?: Capability }) {
-  await db.collection(AGENT_EVENTS_COLLECTION).insertOne({ ...e, ts: new Date() });
+async function emit(db: Db, e: { transaction_id: string; step: string; headline: string; detail?: string; capabilities?: Capability[] }) {
+  // `capabilities` is the set of MongoDB jobs this step exercised (an event can hit several —
+  // hybrid search runs vector + full-text + fusion). The rail counts across this array.
+  await db.collection(AGENT_EVENTS_COLLECTION).insertOne({ ...e, capability: e.capabilities?.[0], ts: new Date() });
 }
 
 /**
@@ -42,28 +44,35 @@ export async function runPendingInvestigations(db: Db, cfg: Config): Promise<{ i
     const caps = new Set<Capability>();
     await emit(db, { transaction_id: id, step: 'triage', headline: `Investigating ${id}`, detail: `$${t.amount.toLocaleString()} · ${t.lane}` });
 
-    // Retrieval (hybrid = vector + full-text).
+    // Retrieval (hybrid = vector + full-text fused server-side by $rankFusion).
     const precedents = await svc.hybrid(t.text, 4);
     caps.add('hybrid'); caps.add('vector'); caps.add('fulltext');
-    await emit(db, { transaction_id: id, step: 'retrieve', headline: `${precedents.length} precedents (hybrid search)`, detail: precedents.map(p => p.transaction_id).join(', '), capability: 'hybrid' });
+    await emit(db, { transaction_id: id, step: 'retrieve', headline: `${precedents.length} precedents (hybrid search)`, detail: precedents.map(p => p.transaction_id).join(', '), capabilities: ['hybrid', 'vector', 'fulltext'] });
 
     // Memory recall (cite prior verdicts).
     const memory = precedents.slice(0, 2).map(p => ({ transaction_id: p.transaction_id, disposition: p.status, lane: p.lane }));
-    if (memory.length) caps.add('memory');
+    if (memory.length) {
+      caps.add('memory');
+      await emit(db, { transaction_id: id, step: 'recall', headline: `Recalled ${memory.length} prior verdict(s)`, detail: memory.map(m => `${m.transaction_id}→${m.disposition}`).join(', '), capabilities: ['memory'] });
+    }
 
     // Agent reasoning.
     const verdict = await runInvestigation(agent, cfg, t.text);
     await emit(db, { transaction_id: id, step: 'reason', headline: `Agent: ${verdict.recommendation} · confidence ${verdict.confidence}`, detail: verdict.risk_factors[0] });
 
-    // Graph fund-tracing.
+    // Graph fund-tracing ($graphLookup) runs on every case — emit either way so the rail reflects it.
     const ring = await svc.traceFundsGraph(t.sender.account_number);
     caps.add('graph');
-    if (ring.suspicious_patterns) await emit(db, { transaction_id: id, step: 'graph', headline: `Ring detected · ${ring.network_size} hops`, detail: `circular_flow=${ring.circular_flow} layering=${ring.layering}`, capability: 'graph' });
+    await emit(db, {
+      transaction_id: id, step: 'graph', capabilities: ['graph'],
+      headline: ring.suspicious_patterns ? `Ring detected · ${ring.network_size} hops` : `Fund-trace clean`,
+      detail: ring.suspicious_patterns ? `circular_flow=${ring.circular_flow} layering=${ring.layering}` : `network_size=${ring.network_size}`,
+    });
 
     // Governance review.
     const gov = await reviewAction(db, x => emb.embedQuery(x), judge, `Disposition ${verdict.recommendation} for ${id}: ${t.text}`);
     caps.add('governance');
-    await emit(db, { transaction_id: id, step: 'govern', headline: `Policy score ${gov.compliance_score}${gov.held ? ' · HELD' : ''}`, detail: gov.violations.map(v => v.policy_code).join(', '), capability: 'governance' });
+    await emit(db, { transaction_id: id, step: 'govern', headline: `Policy score ${gov.compliance_score}${gov.held ? ' · HELD' : ''}`, detail: gov.violations.map(v => v.policy_code).join(', '), capabilities: ['governance'] });
 
     // Deterministic decision + durable gate.
     const facts = { transaction_id: id, amount: t.amount, sender_account: t.sender.account_number, lane: t.lane, sanctions_hit: t.lane === 'sanctions', ring_suspicious: ring.suspicious_patterns };
@@ -88,8 +97,9 @@ export async function runPendingInvestigations(db: Db, cfg: Config): Promise<{ i
 
     await emit(db, {
       transaction_id: id, step: out.phase === 'suspended' ? 'suspend' : 'commit',
+      capabilities: ['durable', 'audit'],
       headline: out.phase === 'suspended' ? `HELD for human review` : `Auto-${out.decision.disposition}`,
-      detail: out.decision.disposition, capability: 'durable',
+      detail: out.decision.disposition,
     });
     n++;
   }

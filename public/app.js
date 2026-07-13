@@ -176,7 +176,7 @@ function connect() {
     if (ev.collection === 'agent_events' && ev.operation === 'insert') {
       const d = ev.doc || {};
       addFeed(STEP_ICON[d.step], `agent · ${d.step || ''}`, d.transaction_id, d.headline, d.step, d.detail);
-      if (d.capability) bumpCap(d.capability);
+      (d.capabilities || (d.capability ? [d.capability] : [])).forEach(bumpCap);
     }
     if (ev.collection === 'transactions' || ev.collection === 'case_decisions' || ev.collection === 'reviews') reloadQueueSoon();
     if (ev.collection === 'case_analysis' && ev.doc?.transaction_id === selected) openCase(selected);

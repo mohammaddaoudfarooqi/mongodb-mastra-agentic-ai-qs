@@ -30,8 +30,9 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
   // Capability rollup — how many times each MongoDB capability has been exercised (capability rail).
   app.get('/api/capabilities', async c => {
     const rows = await db.collection('agent_events').aggregate([
-      { $match: { capability: { $exists: true } } },
-      { $group: { _id: '$capability', count: { $sum: 1 } } },
+      { $match: { capabilities: { $exists: true, $ne: [] } } },
+      { $unwind: '$capabilities' },
+      { $group: { _id: '$capabilities', count: { $sum: 1 } } },
     ]).toArray();
     const counts: Record<string, number> = {};
     for (const r of rows) counts[r._id as string] = r.count as number;
