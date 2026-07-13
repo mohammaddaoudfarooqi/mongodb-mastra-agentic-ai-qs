@@ -6,6 +6,9 @@ import { ChangeStreamHub } from './change-stream-sse';
 import { AuditStore } from '../governance/audit-store';
 import { resolveReview } from '../workflow/investigate';
 import type { EvidenceSnapshot } from '../workflow/evidence';
+import { runPendingInvestigations } from '../workflow/run-engine';
+import { loadTransactionSeed } from '../ingestion/transaction-fixtures';
+import { logger } from '../observability/logger';
 
 /** Mount the control-room API on an app. `hub` is a started ChangeStreamHub over the same Db. */
 export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub): void {
@@ -15,6 +18,13 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
       .find({}, { projection: { _id: 0, embedding: 0 } })
       .sort({ created_at: -1 }).limit(50).toArray();
     return c.json({ cases });
+  });
+
+  // Recent agent-operations feed (so a fresh page load shows the last run's activity).
+  app.get('/api/feed', async c => {
+    const events = await db.collection('agent_events')
+      .find({}, { projection: { _id: 0 } }).sort({ ts: -1 }).limit(60).toArray();
+    return c.json({ events });
   });
 
   // Pending human-review gate.
@@ -46,6 +56,30 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
     }
     await db.collection('reviews').updateOne({ transaction_id: id }, { $set: { status: 'resolved', reviewDecision: body.decision } });
     return c.json({ status: 'committed' });
+  });
+
+  // Reset to a clean all-pending slate for a fresh demo run (keeps the seeded transactions +
+  // their embeddings; only clears run-derived state and re-sets every transaction to pending).
+  app.post('/api/reset', async c => {
+    for (const n of ['cases', 'case_decisions', 'reviews', 'audit_trail', 'agent_events']) {
+      await db.collection(n).deleteMany({});
+    }
+    // Restore each transaction's status to its seed value (live cases -> pending, historical keep decided).
+    const seed = loadTransactionSeed();
+    for (const s of seed) {
+      await db.collection('transactions').updateOne({ transaction_id: s.transaction_id }, { $set: { status: s.status } });
+    }
+    return c.json({ status: 'reset', transactions: seed.length });
+  });
+
+  // LAUNCH: investigate every pending case with the real agent pipeline, emitting step events the
+  // change stream surfaces to the ops feed. Fire-and-forget so the HTTP call returns immediately;
+  // the UI watches progress live via /api/stream.
+  app.post('/api/investigate/run', async c => {
+    runPendingInvestigations(db, cfg)
+      .then(r => logger.info('investigation run complete', r))
+      .catch(err => logger.error('investigation run failed', { err: String(err) }));
+    return c.json({ status: 'started' });
   });
 
   // Audit-chain integrity (verify_chain).

@@ -46,14 +46,15 @@ function reviewCard(r) {
   return el;
 }
 
-function addFeed(actor, id, headline, kind) {
+function addFeed(actor, id, headline, step, detail) {
   const feed = $('#feed');
   const item = document.createElement('div');
-  item.className = 'feed-item';
+  item.className = `feed-item step-${step ?? ''}`;
   item.innerHTML = `<div class="row"><b>${escape(actor)}</b><span class="t">${new Date().toLocaleTimeString()}</span></div>
-    <div>${escape(headline)} <span class="mono sub">${escape(id ?? '')}</span></div>`;
+    <div>${escape(headline)} <span class="mono sub">${escape(id ?? '')}</span></div>
+    ${detail ? `<div class="sub">${escape(detail)}</div>` : ''}`;
   feed.prepend(item);
-  while (feed.childElementCount > 40) feed.lastElementChild.remove();
+  while (feed.childElementCount > 60) feed.lastElementChild.remove();
 }
 
 function bumpCounter(collection) {
@@ -70,6 +71,16 @@ async function loadState() {
   renderCases(cases.cases ?? []);
   renderReviews(reviews.reviews ?? []);
   refreshAudit();
+}
+
+async function backfillFeed() {
+  const feed = $('#feed');
+  if (feed.childElementCount > 0) return; // don't clobber a live stream
+  const { events = [] } = await fetch('/api/feed').then(r => r.json()).catch(() => ({ events: [] }));
+  // events come newest-first; render oldest-first so prepend leaves newest on top.
+  for (const d of events.slice().reverse()) {
+    addFeed(d.step ? `agent · ${d.step}` : 'agent', d.transaction_id, d.headline ?? '', d.step, d.detail);
+  }
 }
 function renderCases(list) {
   const q = $('#queue'); q.innerHTML = '';
@@ -95,10 +106,13 @@ function connect() {
   es.addEventListener('change', e => {
     const ev = JSON.parse(e.data);
     bumpCounter(ev.collection);
-    addFeed(ev.collection, ev.doc?.transaction_id, `${ev.operation} ${ev.collection}`, 'change');
-    // Re-project the affected panel.
-    if (ev.collection === 'transactions' || ev.collection === 'case_decisions') loadStateThrottled();
-    if (ev.collection === 'reviews') loadStateThrottled();
+    // agent_events are the rich, human-readable investigation steps — render those in the feed.
+    if (ev.collection === 'agent_events' && ev.operation === 'insert') {
+      const d = ev.doc || {};
+      addFeed(d.step ? `agent · ${d.step}` : 'agent', d.transaction_id, d.headline ?? '', d.step, d.detail);
+    }
+    // Re-project the affected panels on state-changing writes.
+    if (ev.collection === 'transactions' || ev.collection === 'case_decisions' || ev.collection === 'reviews') loadStateThrottled();
     if (ev.collection === 'audit_trail') refreshAudit();
   });
 }
@@ -108,5 +122,20 @@ function loadStateThrottled() { clearTimeout(throttle); throttle = setTimeout(lo
 
 function escape(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
+$('#launchBtn').onclick = async () => {
+  const btn = $('#launchBtn'); btn.disabled = true; btn.textContent = 'Investigating…';
+  addFeed('system', '', 'Launch — investigating all pending cases', 'commit');
+  await fetch('/api/investigate/run', { method: 'POST' }).catch(() => {});
+  // Re-enable after a while; the run streams progress via SSE meanwhile.
+  setTimeout(() => { btn.disabled = false; btn.textContent = '▶ Launch Investigation'; }, 30000);
+};
+$('#resetBtn').onclick = async () => {
+  await fetch('/api/reset', { method: 'POST' }).catch(() => {});
+  $('#feed').innerHTML = '';
+  addFeed('system', '', 'Reset — all cases pending', 'commit');
+  loadState();
+};
+
 loadState();
+backfillFeed();
 connect();

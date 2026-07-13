@@ -42,6 +42,12 @@
          background:rgba(255,255,255,.03); color:var(--ink); padding:7px 12px; border-radius:8px; cursor:pointer; }
   .btn.approve:hover { border-color:var(--accent); color:var(--accent); }
   .btn.reject:hover { border-color:var(--crit); color:var(--crit); }
+  .btn.launch { border-color:var(--mongo); color:var(--mongo); }
+  .btn.launch:hover { background:rgba(0,237,100,.1); }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .feed-item.step-suspend b, .feed-item.step-govern b { color:var(--warn); }
+  .feed-item.step-commit b { color:var(--accent); }
+  .feed-item.step-graph b { color:var(--crit); }
   #bottom { grid-area:bottom; display:flex; align-items:center; gap:18px; padding:0 18px; font-family:var(--mono); font-size:12px; }
   #live { display:flex; align-items:center; gap:7px; }
   #live .dot { width:8px; height:8px; border-radius:50%; background:var(--crit); }
@@ -56,6 +62,9 @@
     <div id="brand">MARSHAL <span class="dot">●</span></div>
     <span class="chip" id="mode">FRAUD INVESTIGATION CONSOLE</span>
     <span class="chip" id="auditChip">AUDIT ⋯</span>
+    <div style="flex:1"></div>
+    <button class="btn" id="resetBtn">Reset</button>
+    <button class="btn launch" id="launchBtn">▶ Launch Investigation</button>
   </div>
   <div id="left" class="panel"><h2>Case Queue</h2><div class="scroll" id="queue"><div class="empty">loading…</div></div></div>
   <div id="center" class="panel"><h2>Review Gate — Human Decision</h2><div class="scroll" id="reviews"><div class="empty">no cases awaiting review</div></div></div>
