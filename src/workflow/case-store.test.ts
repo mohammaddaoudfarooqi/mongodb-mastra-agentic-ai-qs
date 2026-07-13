@@ -7,18 +7,19 @@ function fakeDb() {
   const col = (name: string) => {
     writes[name] ??= [];
     return {
-      insertOne: async (doc: any) => { writes[name].push({ op: 'insert', doc }); },
-      updateOne: async (filter: any, update: any) => { writes[name].push({ op: 'update', filter, update }); },
+      insertOne: async (doc: any, opts?: any) => { writes[name].push({ op: 'insert', doc, session: opts?.session }); },
+      updateOne: async (filter: any, update: any, opts?: any) => { writes[name].push({ op: 'update', filter, update, session: opts?.session }); },
       find: () => ({ sort: () => ({ limit: () => ({ next: async () => null }) }) }),
     };
   };
+  // Sentinel session; the code passes it to collection ops as { session } inside withTransaction,
+  // so tests can assert an op ran in-transaction by checking write.session === SESSION.
+  const SESSION: any = { sentinel: true, withTransaction: async (t: any) => t() };
   const db: any = {
     collection: (name: string) => col(name),
-    client: {
-      withSession: async (fn: any) => fn({ withTransaction: async (t: any) => t() }),
-    },
+    client: { withSession: async (fn: any) => fn(SESSION) },
   };
-  return { db, writes };
+  return { db, writes, SESSION };
 }
 
 describe('commitCaseDecision', () => {
@@ -34,6 +35,10 @@ describe('commitCaseDecision', () => {
     expect(writes['cases'][0].update.$set.state).toBe('CLEARED');
     expect(writes['audit_trail'][0].op).toBe('insert');
     expect(writes['audit_trail'][0].doc.current_hash).toBeTypeOf('string');
+    // Atomicity (finding #3): the audit insert must run INSIDE the transaction (carry the session),
+    // so a decision can never be committed without its audit-chain entry.
+    expect(writes['audit_trail'][0].session).toBeDefined();
+    expect(writes['case_decisions'][0].session).toBeDefined();
   });
 
   it('maps reject/escalate dispositions to the right transaction status', async () => {

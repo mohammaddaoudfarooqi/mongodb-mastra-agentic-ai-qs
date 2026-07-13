@@ -42,7 +42,29 @@ export async function runPendingInvestigations(db: Db, cfg: Config): Promise<{ i
   for (const t of pending as any[]) {
     const id = t.transaction_id;
     const caps = new Set<Capability>();
+    const facts0 = { transaction_id: id, amount: t.amount, sender_account: t.sender.account_number, lane: t.lane, sanctions_hit: t.lane === 'sanctions', ring_suspicious: false };
     await emit(db, { transaction_id: id, step: 'triage', headline: `Investigating ${id}`, detail: `$${t.amount.toLocaleString()} · ${t.lane}` });
+
+    // HARD-COMPLIANCE GATE, BEFORE any LLM. A sanctions/watchlist hit is a deterministic reject —
+    // the agent and policy judge are never consulted (no tokens, no chance of an LLM overriding a
+    // hard reject). This mirrors decision/core.triage() and must run first (review finding #1).
+    const hard = triage(facts0);
+    if (hard) {
+      caps.add('durable'); caps.add('audit');
+      await emit(db, { transaction_id: id, step: 'govern', headline: `Hard compliance: ${hard.risk_factors[0]}`, detail: 'deterministic reject — agent not consulted', capabilities: ['governance'] });
+      const now0 = new Date().toISOString();
+      await runCaseInvestigation(db, cfg.auditSecret, facts0, { recommendation: 'reject', confidence: 100, risk_factors: hard.risk_factors, rationale: hard.rationale }, 0, false, now0);
+      await db.collection(CASE_ANALYSIS_COLLECTION).replaceOne({ transaction_id: id }, {
+        transaction_id: id, amount: t.amount, lane: t.lane, sender: t.sender, recipient: t.recipient, narrative: t.text,
+        precedents: [], memory: [], ring: { edges: [] }, governance: { compliance_score: 0, violations: [], held: false, dropped_citations: [] },
+        verdict: { recommendation: 'reject', confidence: 100, risk_factors: hard.risk_factors, rationale: hard.rationale },
+        decision: { disposition: hard.disposition, decided_by: hard.decided_by, risk_factors: hard.risk_factors, rationale: hard.rationale },
+        phase: 'committed', capabilities: [...caps], updated_at: new Date(),
+      }, { upsert: true });
+      await emit(db, { transaction_id: id, step: 'commit', capabilities: ['durable', 'audit'], headline: `Auto-reject (compliance)`, detail: 'reject' });
+      n++;
+      continue;
+    }
 
     // Retrieval (hybrid = vector + full-text fused server-side by $rankFusion).
     const precedents = await svc.hybrid(t.text, 4);

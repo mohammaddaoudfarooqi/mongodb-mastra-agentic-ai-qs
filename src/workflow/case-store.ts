@@ -56,20 +56,22 @@ export async function commitCaseDecision(db: Db, auditSecret: string, input: Com
         { $set: { transaction_id: input.transaction_id, state: 'CLEARED', disposition: input.disposition, decided_at: new Date(input.now) } },
         { upsert: true, session },
       );
-    });
-  });
 
-  // Append the audit event AFTER the commit (append-only; shape-only payload, never raw PII).
-  await audit.append({
-    event_type: 'decision_recorded',
-    entity_id: input.transaction_id,
-    actor: { type: input.reviewed_by, id: input.reviewed_by === 'human' ? 'analyst' : 'investigation-agent' },
-    payload_summary: {
-      fields: ['disposition', 'confidence_score', 'compliance_score', 'risk_factor_count'],
-      disposition: input.disposition,
-      risk_factor_count: input.risk_factors.length,
-    },
-    timestamp: new Date(input.now),
+      // Append the hash-chained audit event INSIDE the same transaction (review finding #3): the
+      // decision and its audit link commit atomically — never one without the other. Shape-only
+      // payload, never raw PII.
+      await audit.append({
+        event_type: 'decision_recorded',
+        entity_id: input.transaction_id,
+        actor: { type: input.reviewed_by, id: input.reviewed_by === 'human' ? 'analyst' : 'investigation-agent' },
+        payload_summary: {
+          fields: ['disposition', 'confidence_score', 'compliance_score', 'risk_factor_count'],
+          disposition: input.disposition,
+          risk_factor_count: input.risk_factors.length,
+        },
+        timestamp: new Date(input.now),
+      }, session);
+    });
   });
 }
 

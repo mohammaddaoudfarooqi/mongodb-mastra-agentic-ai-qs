@@ -15,11 +15,16 @@ export class AuditStore {
 
   private col() { return this.db.collection<AuditRecord>(AUDIT_COLLECTION); }
 
-  async append(event: AuditEvent): Promise<AuditRecord> {
-    const last = await this.col().find({}).sort({ _id: -1 }).limit(1).next();
+  /**
+   * Append a chained event. When a `session` is passed, the read-tail + insert both run inside the
+   * caller's transaction, so the audit entry commits ATOMICALLY with the decision it records
+   * (review finding #3) — no window where a decision exists without its audit link.
+   */
+  async append(event: AuditEvent, session?: any): Promise<AuditRecord> {
+    const last = await this.col().find({}, session ? { session } : {}).sort({ _id: -1 }).limit(1).next();
     const previousHash = last?.current_hash ?? GENESIS_HASH;
     const record = buildAuditRecord(this.secret, previousHash, event, this.keyVersion);
-    await this.col().insertOne(record as any);
+    await this.col().insertOne(record as any, session ? { session } : {});
     return record;
   }
 

@@ -70,6 +70,9 @@ export function buildRankFusionPipeline(
             ],
             lexical: [
               { $search: { index: TRANSACTIONS_SEARCH_INDEX, text: { query, path: ['text', 'sender.name', 'recipient.name'] } } },
+              // Match the vector branch: only ALREADY-DECIDED cases are eligible precedent, so a
+              // pending/live case can't be fused in as its own "precedent" (review finding #6).
+              { $match: { status: { $in: [...DECIDED_STATUSES] } } },
               { $limit: perBranch },
             ],
           },

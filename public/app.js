@@ -64,7 +64,7 @@ function caseCard(t) {
   el.dataset.id = t.transaction_id;
   const isPrecedent = t.model_used === 'historical';
   el.innerHTML = `
-    <div class="row"><span class="amt">${money(t.amount)}</span><span class="pill ${t.status}">${t.status}</span></div>
+    <div class="row"><span class="amt">${money(t.amount)}</span><span class="pill ${esc(t.status)}">${esc(t.status)}</span></div>
     <div class="sub">${esc(t.sender?.name)} → ${esc(t.recipient?.name)}</div>
     <div class="sub dim mono">${esc(t.transaction_id)} · ${esc(t.lane)}${isPrecedent ? ' · <span style="opacity:.8">precedent</span>' : ''}</div>`;
   el.onclick = () => openCase(t.transaction_id);
@@ -110,7 +110,7 @@ async function openCase(id) {
   detail.innerHTML = `
     <div class="dhead">
       <div><div class="amt">${money(a.amount)}</div><div class="id">${esc(id)} · ${esc(a.lane)}</div></div>
-      <span class="pill ${held ? 'held' : dec.disposition}">${held ? 'HELD FOR REVIEW' : (dec.disposition || '')}</span>
+      <span class="pill ${held ? 'held' : esc(dec.disposition)}">${held ? 'HELD FOR REVIEW' : esc(dec.disposition || '')}</span>
     </div>
     <div class="flow">${esc(a.sender?.name)} <span class="dim">(${esc(a.sender?.account_number)})</span> → ${esc(a.recipient?.name)} <span class="dim">(${esc(a.recipient?.account_number)})</span></div>
 
@@ -118,7 +118,7 @@ async function openCase(id) {
       <div class="pipe">${PIPE.map(p => `<span class="pstep on">${p}</span>`).join('')}</div></div>
 
     <div class="section"><div class="lbl">🧠 Similar precedent <span class="chip2">hybrid search</span></div>
-      ${(a.precedents || []).slice(0, 3).map(p => `<div class="mini"><div class="row"><b class="mono">${esc(p.transaction_id)}</b><span class="pill ${p.status}">${p.status}</span></div><div class="sub">${esc(p.text?.slice(0, 90))}…</div></div>`).join('') || '<div class="sub dim">none</div>'}</div>
+      ${(a.precedents || []).slice(0, 3).map(p => `<div class="mini"><div class="row"><b class="mono">${esc(p.transaction_id)}</b><span class="pill ${esc(p.status)}">${esc(p.status)}</span></div><div class="sub">${esc(p.text?.slice(0, 90))}…</div></div>`).join('') || '<div class="sub dim">none</div>'}</div>
 
     ${ring.edges?.length ? `<div class="section"><div class="lbl">🕸 Fund-tracing network <span class="chip2">$graphLookup</span> ${ring.circular_flow ? '<span class="pill rejected">circular flow</span>' : ''}</div>
       ${ringSvg(ring, a.sender?.account_number)}</div>` : ''}
@@ -128,11 +128,11 @@ async function openCase(id) {
       <div class="meter"><i style="width:${scorePct}%;background:${scoreColor}"></i></div>
       <div style="margin-top:9px">${(gov.violations || []).map(v => `<div class="mini policy"><b class="mono">${esc(v.policy_code)}</b> <span class="pill escalated">${esc(v.severity)}</span><div class="sub">${esc(v.cited_text)}</div></div>`).join('') || '<div class="sub dim">no policy violations</div>'}</div></div>
 
-    <div class="verdict ${held ? 'held' : (myDecision || dec.disposition)}">
-      <div><div class="sub dim">${held ? 'awaiting your decision' : (myDecision ? 'your decision' : `decided by ${esc(dec.decided_by)}`)}</div>
-        <div class="d">${held ? 'Escalate' : (myDecision || dec.disposition || '')}</div></div>
+    <div class="verdict ${held ? 'held' : esc(myDecision || dec.disposition)}">
+      <div><div class="sub dim">${held ? 'awaiting your decision' : (myDecision ? 'your decision' : `decided by ${esc(dec.reviewed_by || dec.decided_by)}`)}</div>
+        <div class="d">${held ? 'Escalate' : esc(myDecision || dec.disposition || '')}</div></div>
       ${held ? `<div class="actions"><button class="btn approve" data-approve>✓ Approve</button><button class="btn reject" data-reject>✕ Reject</button></div>`
-             : `<span class="pill ${myDecision || dec.disposition}">committed</span>`}
+             : `<span class="pill ${esc(myDecision || dec.disposition)}">committed</span>`}
     </div>
 
     <div class="section"><details><summary>Agent rationale & risk factors</summary>

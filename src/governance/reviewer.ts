@@ -48,8 +48,15 @@ export async function reviewAction(
 ): Promise<GovernanceResult & { retrieved: RetrievedPolicy[] }> {
   const policies = await retrieveRelevantPolicies(db, embedQuery, action);
   const out = await judge({ action, policies });
+  // Use the AUTHORITATIVE stored severity from the retrieved policy, not the LLM-reported one
+  // (review finding #4): the judge only identifies WHICH policy is violated; the penalty weight
+  // comes from the policy record, so a model misclassifying a critical rule as "low" can't
+  // under-penalize. Unknown codes are dropped by evaluateGovernance's hallucination filter.
+  const sevByCode = new Map(policies.map(p => [p.policy_code, p.severity]));
   const violations: Violation[] = out.violations.map(v => ({
-    policy_code: v.policy_code, severity: v.severity, cited_text: v.cited_text,
+    policy_code: v.policy_code,
+    severity: sevByCode.get(v.policy_code) ?? v.severity,
+    cited_text: v.cited_text,
   }));
   const result = evaluateGovernance(violations, policies.map(p => p.policy_code));
   return { ...result, retrieved: policies };

@@ -27,7 +27,9 @@ export async function runCaseInvestigation(
 ): Promise<InvestigationOutcome> {
   const hard = triage(facts);
   const decision = hard ?? reconcile(facts, verdict);
-  const mustSuspend = decision.must_escalate || held;
+  // A hard-compliance decision (e.g. sanctions reject) is terminal — a governance `held` must NOT
+  // suspend it into human review (review finding #1). Only non-hard decisions honor `held`.
+  const mustSuspend = decision.must_escalate || (held && !hard);
 
   if (mustSuspend) {
     const snapshot: EvidenceSnapshot = {

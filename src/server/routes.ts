@@ -11,10 +11,36 @@ import { loadTransactionSeed } from '../ingestion/transaction-fixtures';
 import { logger } from '../observability/logger';
 import { newSessionId, signToken, verifyToken, bearer } from './session';
 
+/**
+ * Re-derive the evidence snapshot from CURRENT case/transaction state (review finding #2), so the
+ * stale-evidence check compares live state to the hash captured at suspend-time — not a stored
+ * snapshot to itself. Returns null if the case has no analysis yet (caller falls back).
+ */
+async function deriveEvidenceSnapshot(db: Db, transactionId: string): Promise<EvidenceSnapshot | null> {
+  const a = await db.collection('case_analysis').findOne({ transaction_id: transactionId });
+  const txn = await db.collection('transactions').findOne({ transaction_id: transactionId });
+  if (!a || !txn) return null;
+  return {
+    transaction_id: transactionId,
+    proposed_disposition: a.decision?.disposition,
+    amount: txn.amount,
+    risk_factors: a.decision?.risk_factors ?? [],
+    compliance_score: a.governance?.compliance_score ?? 0,
+  } as EvidenceSnapshot;
+}
+
 /** Mount the control-room API on an app. `hub` is a started ChangeStreamHub over the same Db. */
 export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub): void {
   // Derive the caller's session id ONLY from a verified Bearer token (never the body).
   const sidOf = (c: any): string | null => verifyToken(cfg.auditSecret, bearer(c.req.header('authorization')));
+
+  // Guard for state-mutating routes (review finding #7): require a valid session token, which the
+  // SPA always mints. This blocks anonymous / cross-site callers from resetting state, triggering
+  // expensive investigations, or resolving reviews. Returns the sid, or null after sending 401.
+  const requireSid = (c: any): string | null => {
+    const sid = sidOf(c);
+    return sid;
+  };
 
   // Mint a stateless session token (per browser tab). No server-side session store.
   app.post('/api/token', c => {
@@ -86,7 +112,8 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
   // shared ledger for the full end-to-end demo (evidence-hash verified, ACID + audit chain).
   app.post('/api/reviews/:id/resolve', async c => {
     const id = c.req.param('id');
-    const sid = sidOf(c);
+    const sid = requireSid(c);
+    if (!sid) return c.json({ error: 'unauthorized — missing/invalid session token' }, 401);
     const body = await c.req.json().catch(() => ({})) as { decision?: 'approve' | 'reject' };
     if (body.decision !== 'approve' && body.decision !== 'reject') {
       return c.json({ error: 'decision must be approve|reject' }, 400);
@@ -97,8 +124,10 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
     }
     const now = new Date().toISOString();
 
-    if (sid) {
-      // Session-scoped: record this user's decision; leave the shared replay pristine.
+    // In DEMO mode (100+ concurrent viewers) resolutions are session-scoped — record this user's
+    // decision and leave the shared replay pristine. In LIVE mode (quickstart / single presenter)
+    // we commit to the shared ledger with full verification below.
+    if (cfg.demoMode) {
       await db.collection('session_resolutions').updateOne(
         { sessionId: sid, transaction_id: id },
         { $set: { sessionId: sid, transaction_id: id, decision: body.decision, decided_at: new Date() } },
@@ -108,12 +137,28 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
     }
 
     // No session (single-user / presenter): commit to the shared ledger with full verification.
+    // Concurrency guard (review finding #5): atomically claim the review by transitioning
+    // pending_review -> resolving. Only the first concurrent caller wins; a loser sees no pending
+    // review and returns 409, so a case can't be double-committed.
+    const claim = await db.collection('reviews').findOneAndUpdate(
+      { transaction_id: id, status: 'pending_review' },
+      { $set: { status: 'resolving' } },
+    );
+    if (!claim) return c.json({ status: 'already_resolved', message: 'This case was already resolved.' }, 409);
+
+    // Real stale-evidence check (review finding #2): re-derive the evidence snapshot from CURRENT
+    // case/transaction state and compare its hash to the one stored at suspend-time. If the case
+    // changed since the reviewer saw it, the hash won't match and we refuse — instead of comparing
+    // the stored snapshot to itself (which could never drift).
+    const currentSnapshot = await deriveEvidenceSnapshot(db, id);
     const res = await resolveReview(db, cfg.auditSecret, {
       transaction_id: id, human_decision: body.decision,
       echoed_evidence_hash: review.evidence_hash as string,
-      current: review.snapshot as EvidenceSnapshot, now,
+      current: (currentSnapshot ?? review.snapshot) as EvidenceSnapshot, now,
     });
     if (res.status === 'rejected_stale') {
+      // Release the claim so a corrected retry is possible.
+      await db.collection('reviews').updateOne({ transaction_id: id }, { $set: { status: 'pending_review' } });
       return c.json({ status: 'rejected_stale', message: 'Evidence changed since review.' }, 409);
     }
     await db.collection('reviews').updateOne({ transaction_id: id }, { $set: { status: 'resolved', reviewDecision: body.decision } });
@@ -136,18 +181,16 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
   // (case_analysis + agent_events) — that is the recording — and only clear per-run decision
   // state. In live mode we clear everything (a fresh live run regenerates it).
   app.post('/api/reset', async c => {
-    const sid = sidOf(c);
-    // A session-scoped reset clears ONLY this user's resolutions — never the shared replay or
-    // another user's state. This is the safe path for 100+ concurrent attendees.
-    if (sid) {
+    const sid = requireSid(c);
+    if (!sid) return c.json({ error: 'unauthorized — missing/invalid session token' }, 401);
+    // In DEMO mode a reset clears ONLY this user's resolutions — never the shared replay or another
+    // user's state (safe for 100+ concurrent attendees).
+    if (cfg.demoMode) {
       await db.collection('session_resolutions').deleteMany({ sessionId: sid });
       return c.json({ status: 'reset', scope: 'session', transactions: loadTransactionSeed().length, demoMode: cfg.demoMode });
     }
-    // No session (single-user / presenter): full reset. In DEMO mode keep the bake; in LIVE mode
-    // clear everything so a fresh live run regenerates it.
-    const clear = cfg.demoMode
-      ? ['case_decisions', 'reviews', 'audit_trail']
-      : ['cases', 'case_decisions', 'reviews', 'audit_trail', 'agent_events', 'case_analysis'];
+    // LIVE mode (single-user quickstart): full reset so a fresh live run regenerates everything.
+    const clear = ['cases', 'case_decisions', 'reviews', 'audit_trail', 'agent_events', 'case_analysis'];
     for (const n of clear) await db.collection(n).deleteMany({});
     const seed = loadTransactionSeed();
     for (const s of seed) {
@@ -159,11 +202,16 @@ export function mountRoutes(app: Hono, cfg: Config, db: Db, hub: ChangeStreamHub
   // LAUNCH. In DEMO mode this is a no-op signal — the client drives a deterministic replay of the
   // baked run (no LLM). In LIVE mode it runs the real agent pipeline (fire-and-forget; the UI
   // watches progress via /api/stream).
+  let runInFlight = false; // in-process guard: don't double-process the same pending set (finding #5)
   app.post('/api/investigate/run', async c => {
+    if (!requireSid(c)) return c.json({ error: 'unauthorized — missing/invalid session token' }, 401);
     if (cfg.demoMode) return c.json({ status: 'replay' });
+    if (runInFlight) return c.json({ status: 'already_running' }, 409);
+    runInFlight = true;
     runPendingInvestigations(db, cfg)
       .then(r => logger.info('investigation run complete', r))
-      .catch(err => logger.error('investigation run failed', { err: String(err) }));
+      .catch(err => logger.error('investigation run failed', { err: String(err) }))
+      .finally(() => { runInFlight = false; });
     return c.json({ status: 'started' });
   });
 

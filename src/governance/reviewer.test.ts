@@ -17,6 +17,17 @@ describe('reviewAction', () => {
     { policy_code: 'SANC-SCREEN-001', policy_text: '...', severity: 'critical', category: 'sanctions' },
   ];
 
+  it('uses the AUTHORITATIVE stored severity, not the LLM-reported one (finding #4)', async () => {
+    // Judge misreports a critical policy as "low"; scoring must still use the stored critical.
+    const judge: PolicyJudge = async () => ({
+      violations: [{ policy_code: 'SANC-SCREEN-001', severity: 'low', cited_text: 'sanctions' }],
+    });
+    const r = await reviewAction(fakeDb(retrieved) as any, embed, judge, 'approve a sanctioned wire');
+    // critical penalty 0.4 -> score 0.6 (NOT low's 0.05 -> 0.95).
+    expect(r.compliance_score).toBeCloseTo(0.6, 4);
+    expect(r.violations[0].severity).toBe('critical');
+  });
+
   it('holds when the judge cites a retrieved high+critical pair', async () => {
     const judge: PolicyJudge = async () => ({
       violations: [

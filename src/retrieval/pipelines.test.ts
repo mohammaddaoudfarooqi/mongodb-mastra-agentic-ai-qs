@@ -29,6 +29,14 @@ describe('retrieval pipeline builders', () => {
     expect(pipelines.lexical[0].$search.index).toBe(TRANSACTIONS_SEARCH_INDEX);
   });
 
+  it('BOTH rank-fusion branches filter to decided statuses (finding #6 — no pending precedent)', () => {
+    const p = buildRankFusionPipeline(qvec, 'structuring', { k: 3 }) as any[];
+    const pipelines = p[0].$rankFusion.input.pipelines;
+    expect(pipelines.vector[0].$vectorSearch.filter.status.$in).toEqual(['approved', 'rejected', 'escalated']);
+    const lexMatch = pipelines.lexical.find((s: any) => s.$match);
+    expect(lexMatch.$match.status.$in).toEqual(['approved', 'rejected', 'escalated']);
+  });
+
   it('graph pipeline follows sender -> recipient links', () => {
     const p = buildGraphPipeline('ACC-RING-A') as any[];
     expect(p[0].$match['sender.account_number']).toBe('ACC-RING-A');

@@ -46,6 +46,16 @@ describe('runCaseInvestigation', () => {
     const out = await runCaseInvestigation(db, 's', facts(), verdict(), 0.35, true, '2026-06-11T00:00:00Z');
     expect(out.phase).toBe('suspended');
   });
+
+  it('a hard-compliance reject is COMMITTED, not suspended, even when governance holds (finding #1)', async () => {
+    const { db, writes } = fakeDb();
+    // sanctions_hit -> triage() returns a hard reject; a governance hold must NOT suspend it.
+    const out = await runCaseInvestigation(db, 's', facts({ sanctions_hit: true }), verdict({ recommendation: 'approve' }), 0.35, true, '2026-06-11T00:00:00Z');
+    expect(out.phase).toBe('committed');
+    expect(out.decision.disposition).toBe('reject');
+    expect(out.decision.decided_by).toBe('compliance');
+    expect(writes['reviews']).toBeUndefined(); // never enqueued for human review
+  });
 });
 
 describe('resolveReview (durable resume with drift check)', () => {
