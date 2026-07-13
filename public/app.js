@@ -1,4 +1,9 @@
+import { mongoLeafSVG, mastraMarkSVG } from '/brand.js';
 const $ = s => document.querySelector(s);
+function renderLockup() {
+  const el = $('#lockup');
+  if (el) el.innerHTML = mongoLeafSVG(24) + '<span class="divider"></span>' + mastraMarkSVG(20);
+}
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = n => '$' + Number(n || 0).toLocaleString();
 
@@ -274,5 +279,5 @@ function initTour() {
   if (!localStorage.getItem('marshal-tour-seen')) setTimeout(startTour, 700);
 }
 
-function boot() { initTheme(); renderRail(); wire(); initTour(); loadQueue(); loadCaps(); backfillFeed(); refreshAudit(); connect(); }
+function boot() { renderLockup(); initTheme(); renderRail(); wire(); initTour(); loadQueue(); loadCaps(); backfillFeed(); refreshAudit(); connect(); }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

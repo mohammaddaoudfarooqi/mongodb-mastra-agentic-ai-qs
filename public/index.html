@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Marshal — Fraud Investigation Console</title>
-<link rel="icon" href="data:,">
+<link rel="icon" href="/favicon.svg">
 <style>
   :root {
     --bg:#05080e; --panel:rgba(17,23,33,.7); --panel2:rgba(24,32,44,.8); --border:rgba(120,145,180,.16);
@@ -35,8 +35,10 @@
 
   /* top bar */
   #top { grid-area:top; display:flex; align-items:center; gap:14px; padding:0 18px; }
+  #lockup { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  #lockup .divider { width:1px; height:22px; background:var(--border-strong,rgba(255,255,255,.14)); flex-shrink:0; }
   #brand { font-weight:800; letter-spacing:.16em; font-size:19px; display:flex; align-items:center; gap:9px; }
-  #brand .dot { width:11px;height:11px;border-radius:50%;background:var(--mongo); box-shadow:0 0 10px var(--mongo); }
+  #brand .dot { width:9px;height:9px;border-radius:50%;background:var(--mongo); box-shadow:0 0 10px var(--mongo); }
   .tag { font-family:var(--mono); font-size:10.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--dim); border:1px solid var(--border); padding:4px 10px; border-radius:999px; }
   #status { font-family:var(--mono); font-size:12px; color:var(--mongo); }
   .btn { font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; border:1px solid var(--border);
@@ -151,8 +153,9 @@
 <body>
 <div id="hud">
   <div id="top" class="panel">
+    <div id="lockup" aria-label="MongoDB and Mastra"></div>
     <div id="brand">MARSHAL <span class="dot"></span></div>
-    <span class="tag">Fraud Investigation · One Atlas Cluster</span>
+    <span class="tag">MongoDB Atlas + Mastra · Fraud Investigation</span>
     <span id="status"></span>
     <div style="flex:1"></div>
     <button class="btn" id="tourBtn" title="Guided tour">? Tour</button>
@@ -180,6 +183,7 @@
     <div id="live"><span class="dot"></span><span>MongoDB Atlas</span></div>
     <div id="counters"></div>
     <div style="flex:1"></div>
+    <span class="dim" style="margin-right:16px">Powered by MongoDB Atlas + Mastra</span>
     <span id="auditChip" class="dim">audit ⋯</span>
   </div>
 </div>
@@ -195,6 +199,6 @@
     <button class="btn launch" id="tourNext">Next ›</button>
   </div>
 </div>
-<script type="module" src="/app.js?v=6"></script>
+<script type="module" src="/app.js?v=7"></script>
 </body>
 </html>
