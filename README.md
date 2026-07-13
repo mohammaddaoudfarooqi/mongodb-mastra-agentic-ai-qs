@@ -72,6 +72,20 @@ pnpm beat:tamper    # corrupt one audit field -> "AUDIT CHAIN BROKEN" alarm
 pnpm beat:restore   # undo the tampering      -> "AUDIT CHAIN RESTORED"
 ```
 
+## Deploy to AWS + Atlas (one command)
+
+```bash
+cp deploy/terraform/terraform.tfvars.example deploy/terraform/terraform.tfvars
+export TF_VAR_atlas_public_key=...  TF_VAR_atlas_private_key=...  TF_VAR_atlas_org_id=...
+export TF_VAR_voyage_api_key=...
+deploy/scripts/deploy.sh
+```
+
+Stands up EC2 (Docker + nginx) + a MongoDB Atlas M10 (replica set — needed for change streams)
+over AWS↔Atlas VPC peering, deploys **demo mode** by default (replays the committed recording, no
+LLM at runtime), and loads the corpus + recording into Atlas. Full guide: [`deploy/README.md`](deploy/README.md).
+Presenter walkthrough for the Ai4 demo: [`story.md`](story.md).
+
 ## Tests
 
 ```bash
