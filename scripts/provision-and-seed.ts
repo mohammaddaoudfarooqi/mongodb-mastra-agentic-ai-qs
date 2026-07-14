@@ -9,7 +9,6 @@ import { runSearchSelfCheck } from '../src/data/search-self-check';
 import { TRANSACTIONS_COLLECTION } from '../src/mastra/schemas/transactions';
 import { provisionPolicyIndexes, seedPolicies } from '../src/governance/provision-policies';
 import { getQueryEmbedder } from '../src/mastra/embed';
-import { provisionMemoryIndex, MEMORY_OBSERVATION_INDEX } from '../src/mastra/memory';
 
 async function main() {
   try { process.loadEnvFile(); } catch { /* .env optional */ }
@@ -55,11 +54,6 @@ async function main() {
     await provisionPolicyIndexes(db);
     const policies = await seedPolicies(db, embed);
     logger.info('seeded policies', { policies });
-
-    // Institutional memory (@mastra/memory): provision its observation vector index up front so
-    // semantic recall of prior verdicts works on the first live run.
-    await provisionMemoryIndex(cfg);
-    logger.info('provisioned institutional memory index', { index: MEMORY_OBSERVATION_INDEX });
 
     // Per-session state: index by session, TTL 24h so demo sessions self-clean.
     await db.collection('session_resolutions').createIndex({ sessionId: 1 }).catch(() => {});

@@ -9,11 +9,6 @@ import { evidenceHash, type EvidenceSnapshot } from './evidence';
 import { triage, reconcile } from '../decision/core';
 import { getQueryEmbedder } from '../mastra/embed';
 import { TRANSACTIONS_COLLECTION } from '../mastra/schemas/transactions';
-import {
-  buildInstitutionalMemory, recallSimilarVerdicts, recordDecidedCase,
-  type InstitutionalMemory,
-} from '../mastra/memory';
-import { logger } from '../observability/logger';
 
 export const AGENT_EVENTS_COLLECTION = 'agent_events';
 export const CASE_ANALYSIS_COLLECTION = 'case_analysis';
@@ -36,19 +31,8 @@ async function emit(db: Db, e: { transaction_id: string; step: string; headline:
 export async function runPendingInvestigations(db: Db, cfg: Config): Promise<{ investigated: number }> {
   const emb = getQueryEmbedder(cfg);
   const svc = new RetrievalService(db, t => emb.embedQuery(t));
-  // Institutional memory (@mastra/memory over Atlas): real semantic recall of prior decided cases,
-  // and the store new verdicts are recorded into. Backs the agent's recall_verdicts tool.
-  const memory = buildInstitutionalMemory(cfg) as unknown as InstitutionalMemory;
-  const recall = (query: string, topK: number) => recallSimilarVerdicts(memory, query, topK);
-  const agent = buildInvestigationAgent(cfg, svc, { recall });
+  const agent = buildInvestigationAgent(cfg, svc);
   const judge = buildPolicyJudge(cfg);
-
-  // Record a decided case into institutional memory. Best-effort: the durable decision has already
-  // committed via commitCaseDecision, so a memory-write failure must never abort the investigation.
-  const remember = async (memo: Parameters<typeof recordDecidedCase>[1], when: Date) => {
-    try { await recordDecidedCase(memory, memo, when); }
-    catch (err) { logger.warn('institutional memory write failed (non-fatal)', { transaction_id: memo.transaction_id, err: String(err) }); }
-  };
 
   const pending = await db.collection(TRANSACTIONS_COLLECTION)
     .find({ status: 'pending' }, { projection: { embedding: 0 } })
@@ -78,7 +62,6 @@ export async function runPendingInvestigations(db: Db, cfg: Config): Promise<{ i
         phase: 'committed', capabilities: [...caps], updated_at: new Date(),
       }, { upsert: true });
       await emit(db, { transaction_id: id, step: 'commit', capabilities: ['durable', 'audit'], headline: `Auto-reject (compliance)`, detail: 'reject' });
-      await remember({ transaction_id: id, disposition: 'reject', lane: t.lane, risk_factors: hard.risk_factors, amount: t.amount }, new Date(now0));
       n++;
       continue;
     }
@@ -88,13 +71,11 @@ export async function runPendingInvestigations(db: Db, cfg: Config): Promise<{ i
     caps.add('hybrid'); caps.add('vector'); caps.add('fulltext');
     await emit(db, { transaction_id: id, step: 'retrieve', headline: `${precedents.length} precedents (hybrid search)`, detail: precedents.map(p => p.transaction_id).join(', '), capabilities: ['hybrid', 'vector', 'fulltext'] });
 
-    // Memory recall — REAL institutional recall via @mastra/memory (semantic search over the
-    // Mastra-managed observation index of prior decided cases), not a re-slice of `precedents`.
-    const recalled = await recallSimilarVerdicts(memory, t.text, 2);
-    const recalledMemo = recalled.map(r => ({ transaction_id: r.transaction_id, score: Number(r.score.toFixed(4)), summary: r.summary }));
-    if (recalledMemo.length) {
+    // Memory recall (cite prior verdicts).
+    const memory = precedents.slice(0, 2).map(p => ({ transaction_id: p.transaction_id, disposition: p.status, lane: p.lane }));
+    if (memory.length) {
       caps.add('memory');
-      await emit(db, { transaction_id: id, step: 'recall', headline: `Recalled ${recalledMemo.length} prior verdict(s)`, detail: recalledMemo.map(m => m.transaction_id).join(', '), capabilities: ['memory'] });
+      await emit(db, { transaction_id: id, step: 'recall', headline: `Recalled ${memory.length} prior verdict(s)`, detail: memory.map(m => `${m.transaction_id}→${m.disposition}`).join(', '), capabilities: ['memory'] });
     }
 
     // Agent reasoning.
@@ -130,7 +111,7 @@ export async function runPendingInvestigations(db: Db, cfg: Config): Promise<{ i
     await db.collection(CASE_ANALYSIS_COLLECTION).replaceOne({ transaction_id: id }, {
       transaction_id: id, amount: t.amount, lane: t.lane,
       sender: t.sender, recipient: t.recipient, narrative: t.text,
-      precedents, memory: recalledMemo, ring, governance: gov, verdict,
+      precedents, memory, ring, governance: gov, verdict,
       decision: { disposition: decision.disposition, decided_by: decision.decided_by, risk_factors: decision.risk_factors, rationale: decision.rationale },
       phase: out.phase, evidence_hash: out.evidence_hash ?? evidenceHash(snapshot),
       snapshot, capabilities: [...caps], updated_at: new Date(),
@@ -142,11 +123,6 @@ export async function runPendingInvestigations(db: Db, cfg: Config): Promise<{ i
       headline: out.phase === 'suspended' ? `HELD for human review` : `Auto-${out.decision.disposition}`,
       detail: out.decision.disposition,
     });
-    // Only committed cases enter institutional memory — a suspended case has no final verdict yet
-    // (it will be recorded when a human resolves it). Grow the corpus so later cases can recall it.
-    if (out.phase === 'committed') {
-      await remember({ transaction_id: id, disposition: out.decision.disposition, lane: t.lane, risk_factors: out.decision.risk_factors, amount: t.amount }, new Date(now));
-    }
     n++;
   }
   return { investigated: n };

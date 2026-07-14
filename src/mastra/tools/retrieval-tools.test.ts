@@ -38,20 +38,9 @@ describe('retrieval tools', () => {
     expect(r.suspicious_patterns).toBe(true);
   });
 
-  it('recall_verdicts cites prior dispositions (vector-search fallback when no memory wired)', async () => {
+  it('recall_verdicts cites prior dispositions', async () => {
     const r = await run(tools.recallVerdicts, { query: 'similar case' });
     expect(r.recalled[0]).toHaveProperty('disposition');
     expect(r.recalled[0]).toHaveProperty('transaction_id');
-  });
-
-  it('recall_verdicts uses injected institutional memory when provided', async () => {
-    const recall = async (query: string, topK: number) => {
-      expect(query).toBe('wire fraud');
-      expect(topK).toBe(3);
-      return [{ transaction_id: 'txn-mem', score: 0.88, summary: 'Case txn-mem decided reject.' }];
-    };
-    const memTools = buildRetrievalTools(stub, { recall });
-    const r = await run(memTools.recallVerdicts, { query: 'wire fraud' });
-    expect(r.recalled).toEqual([{ transaction_id: 'txn-mem', score: 0.88, summary: 'Case txn-mem decided reject.' }]);
   });
 });

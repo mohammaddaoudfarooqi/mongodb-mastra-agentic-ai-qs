@@ -44,7 +44,7 @@ const WELCOME_JOBS = [
   { i: 'fulltext', b: 'Full-text', d: 'exact names, codes, phrases', q: '$search' },
   { i: 'hybrid', b: 'Hybrid', d: 'both, fused server-side', q: '$rankFusion' },
   { i: 'graph', b: 'Graph', d: 'trace mule / ring networks', q: '$graphLookup' },
-  { i: 'memory', b: 'Long-term memory', d: 'recall & cite prior verdicts', q: 'agent memory' },
+  { i: 'memory', b: 'Precedent recall', d: 'recall & cite prior verdicts', q: '$vectorSearch' },
   { i: 'governance', b: 'Policy governance', d: 'grounded, cited compliance', q: 'policy vectors' },
   { i: 'durable', b: 'Durable state', d: 'suspend/resume human gate', q: 'workflow state' },
   { i: 'audit', b: 'Audit', d: 'tamper-evident decision log', q: 'hash chain' },
@@ -52,8 +52,8 @@ const WELCOME_JOBS = [
 function renderWelcome() {
   const lead = $('#welcomeLead');
   if (lead) lead.innerHTML = DEMO_MODE
-    ? `Every flagged transaction is investigated by an AI agent (retrieval, graph fund-tracing, long-term memory, a policy governance layer, and a durable human-approval gate), all on a single MongoDB Atlas cluster. Press <b style="color:var(--mongo)">▶ Replay Investigation</b> to watch a recorded run of the real agent, step for step, then open any case to see exactly how it was decided.`
-    : `Every flagged transaction is investigated by an AI agent (retrieval, graph fund-tracing, long-term memory, a policy governance layer, and a durable human-approval gate), all on a single MongoDB Atlas cluster. Press <b style="color:var(--mongo)">▶ Launch Investigation</b>, then open any case to see exactly how it was decided.`;
+    ? `Every flagged transaction is investigated by an AI agent (retrieval, graph fund-tracing, precedent recall, a policy governance layer, and a durable human-approval gate), all on a single MongoDB Atlas cluster. Press <b style="color:var(--mongo)">▶ Replay Investigation</b> to watch a recorded run of the real agent, step for step, then open any case to see exactly how it was decided.`
+    : `Every flagged transaction is investigated by an AI agent (retrieval, graph fund-tracing, precedent recall, a policy governance layer, and a durable human-approval gate), all on a single MongoDB Atlas cluster. Press <b style="color:var(--mongo)">▶ Launch Investigation</b>, then open any case to see exactly how it was decided.`;
   const flow = $('#wflow');
   if (flow) flow.innerHTML = WELCOME_FLOW.map((s, idx) =>
     `<div class="wstep"><div class="wi">${icon(s.i, 20)}</div><div class="wn">${s.n}</div><div class="wd">${s.d}</div></div>`
@@ -69,7 +69,7 @@ const CAPS = [
   { key: 'fulltext', name: 'Full-Text', tip: '$search (Atlas Search): exact names, codes and phrases embeddings blur over.' },
   { key: 'hybrid', name: 'Hybrid', tip: '$rankFusion: vector + full-text fused server-side by reciprocal rank. One query, no client merge.' },
   { key: 'graph', name: 'Graph', tip: '$graphLookup: traverses sender→recipient links to surface mule rings and circular money flow.' },
-  { key: 'memory', name: 'Memory', tip: 'Long-term agent memory: recalls and cites how similar prior cases were decided.' },
+  { key: 'memory', name: 'Precedent recall', tip: '$vectorSearch over already-decided cases: recalls and cites how similar prior cases were resolved.' },
   { key: 'governance', name: 'Governance', tip: 'Policy layer: retrieves relevant policies by vector, an LLM cites violations, deterministic severity scores them.' },
   { key: 'durable', name: 'Durable', tip: 'Durable workflow state: suspend at the human-approval gate and resume the same case, on Atlas.' },
   { key: 'audit', name: 'Audit', tip: 'Tamper-evident audit: every decision is an HMAC hash-chained, verifiable record.' },
@@ -608,7 +608,7 @@ function initTheme() {
 // ---- guided walkthrough --------------------------------------------------------
 function tourSteps() {
   return [
-    { sel: '#brand', title: 'Welcome to Marshal', body: 'A fraud-investigation console that runs an AI agent over flagged transactions, with vector, full-text, hybrid & graph search, long-term memory, a policy governance layer, and a durable human-approval gate. Every one of those jobs runs on a SINGLE MongoDB Atlas cluster.' },
+    { sel: '#brand', title: 'Welcome to Marshal', body: 'A fraud-investigation console that runs an AI agent over flagged transactions, with vector, full-text, hybrid & graph search, precedent recall, a policy governance layer, and a durable human-approval gate. Every one of those jobs runs on a SINGLE MongoDB Atlas cluster.' },
     { sel: '#rail', title: 'The capability rail', body: 'Eight MongoDB jobs the industry usually buys as separate systems: a vector DB, a keyword engine, a graph store, a cache, an audit log… Here they are one cluster. Each tile lights up and counts as the agent uses it during a run.' },
     { sel: '#launchBtn', title: DEMO_MODE ? 'Replay an investigation' : 'Launch an investigation', body: DEMO_MODE
         ? 'This replays a RECORDED run of the real agent against this cluster: every step you will watch was produced by the live pipeline and captured. Identical for every viewer, no tokens spent twice.'

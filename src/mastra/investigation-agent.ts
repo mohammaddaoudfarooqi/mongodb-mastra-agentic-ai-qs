@@ -2,7 +2,7 @@ import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import type { Config } from '../config';
 import { getLLM, maxTokensFor, temperatureFor } from './models';
-import { buildRetrievalTools, type RecallFn } from './tools/retrieval-tools';
+import { buildRetrievalTools } from './tools/retrieval-tools';
 import type { RetrievalService } from '../retrieval/service';
 
 /** The typed verdict the agent must emit. Code (decision/core.reconcile) has the final word. */
@@ -25,13 +25,9 @@ Recommend escalate whenever you are uncertain, the amount is high-value, it look
 ground every risk_factor in a tool result. You do NOT make the final decision — a deterministic policy
 layer and a human reviewer follow you.`;
 
-/** Build the investigation agent with the retrieval tools bound to a RetrievalService. When a
- *  `recall` fn is provided, `recall_verdicts` is backed by real @mastra/memory recall. */
-export function buildInvestigationAgent(
-  cfg: Config, svc: RetrievalService, opts: { recall?: RecallFn; modelOverride?: string } = {},
-): Agent {
-  const tools = buildRetrievalTools(svc, { recall: opts.recall });
-  const modelOverride = opts.modelOverride;
+/** Build the investigation agent with the retrieval tools bound to a RetrievalService. */
+export function buildInvestigationAgent(cfg: Config, svc: RetrievalService, modelOverride?: string): Agent {
+  const tools = buildRetrievalTools(svc);
   return new Agent({
     id: 'investigation-agent',
     name: 'investigation-agent',

@@ -13,8 +13,7 @@ import type { Config } from '../config';
  *   - `@mastra/voyageai`'s text embedder needs `@huggingface/transformers` for token-aware batching
  *     (a heavy native dep) and throws without it.
  * So the official embedder can't reach the MongoDB-hosted endpoint today. The raw SDK sends the exact
- * object shape the API accepts. (@mastra/memory still uses a Voyage TEXT embedder via the raw SDK too
- * — see memory-embedder.ts.) Revisit if @mastra/voyageai adds a base-URL passthrough + fixes the
+ * object shape the API accepts. Revisit if @mastra/voyageai adds a base-URL passthrough + fixes the
  * multimodal input shaping.
  */
 export const MULTIMODAL_MODEL = 'voyage-multimodal-3.5';
