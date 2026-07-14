@@ -9,13 +9,13 @@ importers:
   .:
     dependencies:
       '@ai-sdk/amazon-bedrock':
-        specifier: latest
+        specifier: 5.0.17
         version: 5.0.17(zod@3.25.76)
       '@ai-sdk/anthropic':
-        specifier: latest
+        specifier: 4.0.12
         version: 4.0.12(zod@3.25.76)
       '@ai-sdk/openai':
-        specifier: latest
+        specifier: 4.0.11
         version: 4.0.11(zod@3.25.76)
       '@aws-sdk/credential-providers':
         specifier: ^3.1081.0
@@ -24,17 +24,14 @@ importers:
         specifier: ^2.0.8
         version: 2.0.8(hono@4.12.29)
       '@mastra/core':
-        specifier: latest
+        specifier: 1.50.1
         version: 1.50.1(express@5.2.1)(zod@3.25.76)
       '@mastra/memory':
-        specifier: latest
+        specifier: 1.22.2
         version: 1.22.2(@mastra/core@1.50.1(express@5.2.1)(zod@3.25.76))
       '@mastra/mongodb':
-        specifier: latest
+        specifier: 1.12.1
         version: 1.12.1(@aws-sdk/credential-providers@3.1081.0)(@mastra/core@1.50.1(express@5.2.1)(zod@3.25.76))
-      '@mastra/voyageai':
-        specifier: latest
-        version: 0.3.0(zod@3.25.76)
       hono:
         specifier: ^4
         version: 4.12.29
@@ -752,12 +749,6 @@ packages:
     engines: {node: '>=22.13.0'}
     peerDependencies:
       '@mastra/core': '>=1.50.0-0 <2.0.0-0'
-      zod: ^3.25.0 || ^4.0.0
-
-  '@mastra/voyageai@0.3.0':
-    resolution: {integrity: sha512-7mUpLL2ksG1/Ev4+mIJ20Ncy/hJxTxmtnpckrMsCWapantGlYF/iJ9atMi/ZtDOxSdBtgLq2DxTAyvSDfLyqWQ==}
-    engines: {node: '>=22.13.0'}
-    peerDependencies:
       zod: ^3.25.0 || ^4.0.0
 
   '@modelcontextprotocol/sdk@1.29.0':
@@ -2997,18 +2988,6 @@ packages:
       jsdom:
         optional: true
 
-  voyageai@0.2.1:
-    resolution: {integrity: sha512-ym7Dk6p8Si6lR9wDh58EzxwT0ziD/pqXjzzzceOSySO3Ic3uosHZLOTAsb3Gq+1OaKdEMnni/p8TohKUNvLTkg==}
-    engines: {node: '>=18.0.0'}
-    peerDependencies:
-      '@huggingface/transformers': ^3.8.0
-      onnxruntime-node: '>=1.17.0'
-    peerDependenciesMeta:
-      '@huggingface/transformers':
-        optional: true
-      onnxruntime-node:
-        optional: true
-
   voyageai@0.3.1:
     resolution: {integrity: sha512-+f6gRsnuV7gi2tFvSFWTqERkZhox1VQCT0G+ALUDAwz75OpzpqaXgy6TSRkbrf6az9WZsXoAyDtplDksHLSbag==}
     engines: {node: '>=18.0.0'}
@@ -3925,15 +3904,6 @@ snapshots:
       '@mastra/core': 1.50.1(express@5.2.1)(zod@3.25.76)
       hono: 4.12.29
       zod: 3.25.76
-
-  '@mastra/voyageai@0.3.0(zod@3.25.76)':
-    dependencies:
-      voyageai: 0.2.1
-      zod: 3.25.76
-    transitivePeerDependencies:
-      - '@huggingface/transformers'
-      - encoding
-      - onnxruntime-node
 
   '@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)':
     dependencies:
@@ -6333,12 +6303,6 @@ snapshots:
       - sugarss
       - supports-color
       - terser
-
-  voyageai@0.2.1:
-    dependencies:
-      node-fetch: 2.7.0
-    transitivePeerDependencies:
-      - encoding
 
   voyageai@0.3.1:
     dependencies:

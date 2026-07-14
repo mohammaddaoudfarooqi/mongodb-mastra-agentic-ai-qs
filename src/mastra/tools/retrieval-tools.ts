@@ -2,6 +2,12 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import type { RetrievalService } from '../../retrieval/service';
 
+/** Optional institutional-memory recall (semantic search over prior decided cases via @mastra/memory).
+ *  When injected, `recall_verdicts` is backed by REAL memory recall instead of a vector-search fallback. */
+export interface RecallFn {
+  (query: string, topK: number): Promise<{ transaction_id: string; score: number; summary: string }[]>;
+}
+
 /**
  * The agent's grounding tools over one Atlas cluster. Each wraps a single-collection
  * aggregation on `transactions`:
@@ -9,10 +15,11 @@ import type { RetrievalService } from '../../retrieval/service';
  *   - search_text      : $search (BM25 exact names/codes)
  *   - hybrid_search    : $rankFusion (server-side RRF of the two)
  *   - trace_funds      : $graphLookup (fraud-ring / circular-flow signals)
- *   - recall_verdicts  : semantic recall of prior decided cases (institutional memory)
+ *   - recall_verdicts  : institutional memory recall (@mastra/memory observation search) when a
+ *                        `recall` fn is injected; else a vector-search fallback over decided cases
  * Built as a factory so the RetrievalService (holding the Db + embedder) is injected.
  */
-export function buildRetrievalTools(svc: RetrievalService) {
+export function buildRetrievalTools(svc: RetrievalService, opts: { recall?: RecallFn } = {}) {
   const idInput = z.object({
     query: z.string().describe('the case narrative or a focused search phrase'),
     k: z.number().int().positive().max(20).optional().describe('how many results (default 5)'),
@@ -54,7 +61,14 @@ export function buildRetrievalTools(svc: RetrievalService) {
     description: 'Recall prior decided cases that resemble this one and cite how they were resolved (long-term institutional memory).',
     inputSchema: idInput,
     execute: async (input: any) => {
-      const hits = await svc.vector(input.query, input.k ?? 3);
+      const k = input.k ?? 3;
+      // Prefer genuine institutional memory (@mastra/memory observation recall) when wired.
+      if (opts.recall) {
+        const recalled = await opts.recall(input.query, k);
+        return { recalled: recalled.map(r => ({ transaction_id: r.transaction_id, score: r.score, summary: r.summary })) };
+      }
+      // Fallback: semantic vector search over decided precedent (hermetic / when memory is unavailable).
+      const hits = await svc.vector(input.query, k);
       return {
         recalled: hits.map(h => ({
           transaction_id: h.transaction_id,

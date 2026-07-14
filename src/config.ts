@@ -6,6 +6,8 @@ export interface Config {
   mongoDb: string;
   voyageApiKey: string;
   voyageBaseUrl?: string;
+  /** Voyage TEXT model used by @mastra/memory semantic recall (its own 1024-dim index). */
+  memoryEmbedModel?: string;
   llmProvider: 'anthropic' | 'openai' | 'bedrock';
   llmModel: string;
   llmBaseUrl?: string;
@@ -37,6 +39,7 @@ const EnvSchema = z.object({
   MONGODB_DB: z.string().min(1).default('marshal'),
   VOYAGE_API_KEY: z.string().min(1, 'VOYAGE_API_KEY is required'),
   VOYAGE_BASE_URL: z.string().optional(),
+  MEMORY_EMBED_MODEL: z.string().optional(),
   LLM_PROVIDER: z.enum(['anthropic', 'openai', 'bedrock']).default('anthropic'),
   LLM_MODEL: z.string().min(1).default('claude-haiku-4-5'),
   LLM_BASE_URL: z.string().optional(),
@@ -80,6 +83,7 @@ export function loadConfig(
     mongoDb: e.MONGODB_DB,
     voyageApiKey: e.VOYAGE_API_KEY,
     voyageBaseUrl: e.VOYAGE_BASE_URL,
+    memoryEmbedModel: e.MEMORY_EMBED_MODEL || undefined,
     llmProvider: e.LLM_PROVIDER,
     llmModel: e.LLM_MODEL,
     llmBaseUrl: e.LLM_BASE_URL,

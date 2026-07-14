@@ -1,6 +1,22 @@
 import { VoyageAIClient } from 'voyageai';
 import type { Config } from '../config';
 
+/**
+ * Voyage embeddings for the `transactions` corpus, routed through the MongoDB-hosted Voyage endpoint
+ * (`https://ai.mongodb.com/v1`) so the Atlas-scoped VOYAGE_API_KEY authenticates.
+ *
+ * We deliberately call the raw `voyageai` SDK's `multimodalEmbed` rather than the official
+ * `@mastra/voyageai` embedder. Verified against the live MongoDB-hosted endpoint (2026-07):
+ *   - `@mastra/voyageai`'s `VoyageMultimodalEmbeddingModel.doEmbed` serializes text content to bare
+ *     strings, producing `inputs: [["text"]]`; the API requires `inputs: [{content:[{type,text}]}]`
+ *     and 400s the array-of-strings shape ("Expected object. Received list").
+ *   - `@mastra/voyageai`'s text embedder needs `@huggingface/transformers` for token-aware batching
+ *     (a heavy native dep) and throws without it.
+ * So the official embedder can't reach the MongoDB-hosted endpoint today. The raw SDK sends the exact
+ * object shape the API accepts. (@mastra/memory still uses a Voyage TEXT embedder via the raw SDK too
+ * — see memory-embedder.ts.) Revisit if @mastra/voyageai adds a base-URL passthrough + fixes the
+ * multimodal input shaping.
+ */
 export const MULTIMODAL_MODEL = 'voyage-multimodal-3.5';
 export const MONGODB_VOYAGE_BASE_URL = 'https://ai.mongodb.com/v1';
 
