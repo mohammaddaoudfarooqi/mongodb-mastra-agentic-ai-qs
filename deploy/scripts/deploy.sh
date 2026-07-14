@@ -62,6 +62,34 @@ assert_no_overlap() {
   [[ "$oa" != "$ob" ]] || die "atlas_cidr ($a) and vpc_cidr ($b) may overlap (same first octet). Pick non-overlapping ranges."
 }
 
+# ── vpc_cidr must not collide with an EXISTING peer in the (possibly shared) Atlas project ──
+# Atlas rejects a second peer whose route_table_cidr_block duplicates an existing one
+# (HTTP 409 OVERLAPPING_CIDR_BLOCK) — a reused/shared project may already peer our chosen CIDR
+# from another stack. terraform surfaces this only mid-apply (after ~11 min of cluster build), so
+# probe the project's existing AWS peers up front and fail fast with a fix. Requires the Atlas API
+# keys + a project id; best-effort (skips quietly if the API is unreachable — apply still guards it).
+assert_no_atlas_peer_overlap() {
+  local vpc_cidr="$1" proj="${TF_VAR_atlas_project_id:-$(tfvar atlas_project_id)}"
+  [[ -n "$proj" ]] || return 0   # creating a NEW project ⇒ no pre-existing peers
+  [[ -n "${TF_VAR_atlas_public_key:-}" && -n "${TF_VAR_atlas_private_key:-}" ]] || return 0
+  # Skip on a RE-RUN of this stack: if our own peering is already in state, the existing peer at
+  # vpc_cidr is ours, not a collision. Only fresh deploys (no peering in state) need this guard.
+  if tf state list 2>/dev/null | grep -q '^mongodbatlas_network_peering\.aws'; then
+    return 0
+  fi
+  local resp existing
+  resp=$(curl -s --max-time 20 --user "${TF_VAR_atlas_public_key}:${TF_VAR_atlas_private_key}" --digest \
+    "https://cloud.mongodb.com/api/atlas/v2/groups/${proj}/peers?providerName=AWS" \
+    -H "Accept: application/vnd.atlas.2023-11-15+json" 2>/dev/null) || return 0
+  # Non-JSON (auth error / rate limit) ⇒ skip; the apply-time 409 guard remains the backstop.
+  echo "$resp" | jq -e . >/dev/null 2>&1 || return 0
+  existing=$(echo "$resp" | jq -r '.results[]?.routeTableCidrBlock // empty' 2>/dev/null)
+  if echo "$existing" | grep -qxF "$vpc_cidr"; then
+    die "vpc_cidr ($vpc_cidr) is ALREADY peered by another stack in Atlas project $proj. Atlas 409s on a duplicate peer CIDR (this fails ~11 min into apply). Pick a different vpc_cidr/subnet_cidr in terraform.tfvars (existing peer CIDRs: $(echo "$existing" | paste -sd, -))."
+  fi
+  ok "vpc_cidr $vpc_cidr does not collide with existing Atlas peers"
+}
+
 # ────────────────────────────────────────────────────────────────────────────────
 # 1. PREFLIGHT
 # ────────────────────────────────────────────────────────────────────────────────
@@ -82,10 +110,26 @@ preflight() {
     [[ -n "${TF_VAR_atlas_private_key:-}" ]] || die "TF_VAR_atlas_private_key is required (create mode)."
     [[ -n "${TF_VAR_atlas_project_id:-}" || -n "$(tfvar atlas_project_id)" || -n "${TF_VAR_atlas_org_id:-}" ]] || die "Set TF_VAR_atlas_project_id (deploy into an existing project) or TF_VAR_atlas_org_id (create a new project, needs the Project-Creator org role)."
     assert_no_overlap "$(tfvar atlas_cidr | grep -o '[0-9.]*/[0-9]*' || echo 192.168.248.0/21)" "$(tfvar vpc_cidr | grep -o '[0-9.]*/[0-9]*' || echo 10.0.0.0/16)"
+    assert_no_atlas_peer_overlap "$(tfvar vpc_cidr | grep -o '[0-9.]*/[0-9]*' || echo 10.0.0.0/16)"
   else
     [[ -n "${TF_VAR_mongodb_uri_byo:-}" ]] || die "create_atlas_cluster=false requires TF_VAR_mongodb_uri_byo (a replica-set URI — Marshal uses change streams)."
   fi
   [[ -n "${TF_VAR_voyage_api_key:-}" ]] || die "TF_VAR_voyage_api_key is required (used to embed the corpus at provision time)."
+
+  # App repo must be ANONYMOUSLY cloneable: the EC2 box clones it over HTTPS with no credentials
+  # (userdata.sh: git clone <url>). If the repo is private, that clone fails with "could not read
+  # Username for 'https://github.com'" and the box comes up with no app. Probe the exact repo+ref
+  # from here with credential prompts disabled, so a private/typo'd repo fails fast (before ~15 min
+  # of provisioning) instead of on the box. Only meaningful for https:// URLs.
+  local repo ref; repo=$(tfvar app_repo_url); repo=${repo:-https://github.com/mohammaddaoudfarooqi/mongodb-mastra-agentic-ai-qs.git}
+  ref=$(tfvar app_repo_ref); ref=${ref:-main}
+  if [[ "$repo" == https://* ]]; then
+    if GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/true git ls-remote "$repo" "$ref" >/dev/null 2>&1; then
+      ok "app repo reachable anonymously ($repo @ $ref)"
+    else
+      die "app repo not anonymously cloneable: $repo @ $ref. The EC2 box clones with no credentials, so the repo must be PUBLIC and the ref must exist. Make it public (or point app_repo_url at a public mirror) and re-run."
+    fi
+  fi
 
   # admin_cidr: auto-detect the deploy machine's public IP as /32 if not set.
   if [[ -z "${TF_VAR_admin_cidr:-}" && -z "$(tfvar admin_cidr)" ]]; then
@@ -106,7 +150,21 @@ preflight() {
   # App HMAC secrets (audit chain + session tokens). Generate + persist once so the audit
   # chain key and session signing key stay stable across re-applies (a rotated audit secret
   # would make the existing chain fail verification). Kept SEPARATE — neither can forge the other.
-  if [[ -z "${TF_VAR_audit_secret:-}" ]]; then
+  #
+  # AUDIT_SECRET is DEMO-MODE-AWARE. The committed demo recording (data/replay/) was baked with
+  # the app's dev fallback secret (config.ts DEV_AUDIT_SECRET); a demo box replays that recording
+  # and verifies its audit chain. Injecting a freshly generated secret would make every replayed
+  # link fail HMAC verification → a false "AUDIT CHAIN BROKEN" alarm on a box that isn't tampered.
+  # So in demo mode we deliberately leave AUDIT_SECRET unset and let the app fall back to the same
+  # dev secret the recording carries. Live mode (no recording) still gets a generated secret.
+  local demo; demo=$(tfvar demo_mode); demo=${demo:-1}
+  if [[ "$demo" == "1" || "$demo" == "true" ]]; then
+    if [[ -n "${TF_VAR_audit_secret:-}" ]]; then
+      warn "demo mode: ignoring the provided AUDIT_SECRET — the box must verify the committed recording with the secret it was baked with (app dev fallback). Unsetting."
+      unset TF_VAR_audit_secret
+    fi
+    ok "demo mode: AUDIT_SECRET left unset (app falls back to the recording's bake secret; audit chain verifies)"
+  elif [[ -z "${TF_VAR_audit_secret:-}" ]]; then
     export TF_VAR_audit_secret=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48)
     persist_secret audit_secret "$TF_VAR_audit_secret"
     ok "generated AUDIT_SECRET → deploy/.deploy-secrets.env"

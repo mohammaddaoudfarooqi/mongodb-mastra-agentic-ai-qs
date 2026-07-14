@@ -52,8 +52,8 @@ const WELCOME_JOBS = [
 function renderWelcome() {
   const lead = $('#welcomeLead');
   if (lead) lead.innerHTML = DEMO_MODE
-    ? `Every flagged transaction is investigated by an AI agent — retrieval, graph fund-tracing, long-term memory, a policy governance layer, and a durable human-approval gate — all on a single MongoDB Atlas cluster. Press <b style="color:var(--mongo)">▶ Replay Investigation</b> to watch a recorded run of the real agent, step for step, then open any case to see exactly how it was decided.`
-    : `Every flagged transaction is investigated by an AI agent — retrieval, graph fund-tracing, long-term memory, a policy governance layer, and a durable human-approval gate — all on a single MongoDB Atlas cluster. Press <b style="color:var(--mongo)">▶ Launch Investigation</b>, then open any case to see exactly how it was decided.`;
+    ? `Every flagged transaction is investigated by an AI agent (retrieval, graph fund-tracing, long-term memory, a policy governance layer, and a durable human-approval gate), all on a single MongoDB Atlas cluster. Press <b style="color:var(--mongo)">▶ Replay Investigation</b> to watch a recorded run of the real agent, step for step, then open any case to see exactly how it was decided.`
+    : `Every flagged transaction is investigated by an AI agent (retrieval, graph fund-tracing, long-term memory, a policy governance layer, and a durable human-approval gate), all on a single MongoDB Atlas cluster. Press <b style="color:var(--mongo)">▶ Launch Investigation</b>, then open any case to see exactly how it was decided.`;
   const flow = $('#wflow');
   if (flow) flow.innerHTML = WELCOME_FLOW.map((s, idx) =>
     `<div class="wstep"><div class="wi">${icon(s.i, 20)}</div><div class="wn">${s.n}</div><div class="wd">${s.d}</div></div>`
@@ -65,14 +65,14 @@ function renderWelcome() {
 
 // ---- capability rail --------------------------------------------------------
 const CAPS = [
-  { key: 'vector', name: 'Vector', tip: '$vectorSearch — semantic recall of similar prior cases from Voyage embeddings, all in Atlas.' },
-  { key: 'fulltext', name: 'Full-Text', tip: '$search (Atlas Search) — exact names, codes and phrases embeddings blur over.' },
-  { key: 'hybrid', name: 'Hybrid', tip: '$rankFusion — vector + full-text fused server-side by reciprocal rank. One query, no client merge.' },
-  { key: 'graph', name: 'Graph', tip: '$graphLookup — traverses sender→recipient links to surface mule rings and circular money flow.' },
-  { key: 'memory', name: 'Memory', tip: 'Long-term agent memory — recalls and cites how similar prior cases were decided.' },
-  { key: 'governance', name: 'Governance', tip: 'Policy layer — retrieves relevant policies by vector, an LLM cites violations, deterministic severity scores them.' },
-  { key: 'durable', name: 'Durable', tip: 'Durable workflow state — suspend at the human-approval gate and resume the same case, on Atlas.' },
-  { key: 'audit', name: 'Audit', tip: 'Tamper-evident audit — every decision is an HMAC hash-chained, verifiable record.' },
+  { key: 'vector', name: 'Vector', tip: '$vectorSearch: semantic recall of similar prior cases from Voyage embeddings, all in Atlas.' },
+  { key: 'fulltext', name: 'Full-Text', tip: '$search (Atlas Search): exact names, codes and phrases embeddings blur over.' },
+  { key: 'hybrid', name: 'Hybrid', tip: '$rankFusion: vector + full-text fused server-side by reciprocal rank. One query, no client merge.' },
+  { key: 'graph', name: 'Graph', tip: '$graphLookup: traverses sender→recipient links to surface mule rings and circular money flow.' },
+  { key: 'memory', name: 'Memory', tip: 'Long-term agent memory: recalls and cites how similar prior cases were decided.' },
+  { key: 'governance', name: 'Governance', tip: 'Policy layer: retrieves relevant policies by vector, an LLM cites violations, deterministic severity scores them.' },
+  { key: 'durable', name: 'Durable', tip: 'Durable workflow state: suspend at the human-approval gate and resume the same case, on Atlas.' },
+  { key: 'audit', name: 'Audit', tip: 'Tamper-evident audit: every decision is an HMAC hash-chained, verifiable record.' },
 ];
 const capCounts = {};
 function renderRail() {
@@ -223,7 +223,7 @@ async function theaterTerminal(d) {
   const evid = $('#tevid');
   if (evid && a?.analyzed !== false && a) evid.innerHTML = evidenceSections(a, { compact: true });
   const stampCls = outcome === 'held' ? 'held' : outcome;
-  const stampText = outcome === 'held' ? 'HELD — your call' : outcome;
+  const stampText = outcome === 'held' ? 'HELD: your call' : outcome;
   const tnow = $('#tnow');
   if (tnow) tnow.insertAdjacentHTML('afterend', `<div class="stamp ${esc(stampCls)}">${esc(stampText)}</div>`);
 }
@@ -246,7 +246,7 @@ function endRun() {
   run.active = false;
   const b = $('#launchBtn'); b.disabled = false; renderLaunchLabel();
   const held = theater.done.filter(c => c.outcome === 'held').length;
-  setStatus(held ? `Run complete — ${held} case${held > 1 ? 's' : ''} held for your decision` : 'Run complete');
+  setStatus(held ? `Run complete: ${held} case${held > 1 ? 's' : ''} held for your decision` : 'Run complete');
   setTimeout(() => setStatus(''), 6000);
   loadStats();
   loadQueue();
@@ -341,7 +341,7 @@ async function openCase(id) {
       </div>
       <div class="flow">${esc(a.sender?.name)} <span class="dim">(${esc(a.sender?.account_number)})</span> → ${esc(a.recipient?.name)} <span class="dim">(${esc(a.recipient?.account_number)})</span></div>
       <div class="section"><div class="mini"><b>Reference precedent</b><div class="sub" style="margin-top:6px">${esc(a.narrative)}</div></div></div>
-      <div class="section sub dim">This case is part of the decided-precedent corpus — the agent retrieves it as evidence when investigating new transactions.</div>`;
+      <div class="section sub dim">This case is part of the decided-precedent corpus; the agent retrieves it as evidence when investigating new transactions.</div>`;
     wireBackToRun();
     return;
   }
@@ -474,12 +474,12 @@ async function refreshAudit() {
   const c = $('#auditChip');
   if (v.ok) {
     c.innerHTML = `${icon('audit', 13)} audit chain verified`; c.style.color = 'var(--accent)';
-    if (auditWasBroken) { showBanner('info', 'AUDIT CHAIN RESTORED — every record verifies again'); auditWasBroken = false; }
+    if (auditWasBroken) { showBanner('info', 'AUDIT CHAIN RESTORED: every record verifies again'); auditWasBroken = false; }
   } else {
     c.innerHTML = `${icon('warn', 13)} audit chain broken`; c.style.color = 'var(--crit)';
     const broken = (v.brokenLinks || [])[0];
     auditWasBroken = true;
-    showBanner('alarm', `AUDIT CHAIN BROKEN — record #${broken ? broken.index : '?'} failed HMAC verification${broken?.reason ? ` (${esc(broken.reason)})` : ''}. A tampered ledger cannot hide.`, { sticky: true });
+    showBanner('alarm', `AUDIT CHAIN BROKEN: record #${broken ? broken.index : '?'} failed HMAC verification${broken?.reason ? ` (${esc(broken.reason)})` : ''}. A tampered ledger cannot hide.`, { sticky: true });
   }
 }
 function setStatus(m) { $('#status').textContent = m; }
@@ -503,7 +503,7 @@ function connect() {
       if (!DEMO_MODE) theaterEvent(d); // live runs drive the theater straight off the change stream
     }
     if (ev.collection === 'policies') {
-      showBanner('info', 'POLICY UPDATED LIVE — the governance layer reads the new version on the very next case. No redeploy.');
+      showBanner('info', 'POLICY UPDATED LIVE: the governance layer reads the new version on the very next case. No redeploy.');
       bumpCap('governance');
     }
     if (ev.collection === 'transactions' || ev.collection === 'case_decisions' || ev.collection === 'reviews') reloadQueueSoon();
@@ -518,7 +518,7 @@ function connect() {
 let replayTimer = null;
 async function runReplay() {
   const { events = [], analyses = [] } = await fetch('/api/replay').then(r => r.json()).catch(() => ({}));
-  if (!events.length) { setStatus('No baked replay found — run `pnpm bake` first.'); endRun(); return; }
+  if (!events.length) { setStatus('No baked replay found. Run `pnpm bake` first.'); endRun(); return; }
   // Choreography reset: rail + feed count only this run; every analyzed case visually returns
   // to pending, then flips as its terminal event lands.
   for (const k in capCounts) delete capCounts[k];
@@ -551,7 +551,7 @@ function wire() {
     if (run.active) return;
     const b = $('#launchBtn'); b.disabled = true; b.textContent = DEMO_MODE ? 'Replaying…' : 'Investigating…';
     run.active = true;
-    addFeed('launch', 'system', '', DEMO_MODE ? 'Replaying the recorded investigation' : 'Launch — investigating all pending cases', 'commit');
+    addFeed('launch', 'system', '', DEMO_MODE ? 'Replaying the recorded investigation' : 'Launch: investigating all pending cases', 'commit');
     if (DEMO_MODE) {
       setStatus('Replaying a recorded run of the real agent');
       try { await api('/api/investigate/run', { method: 'POST' }); } catch {}
@@ -576,7 +576,7 @@ function wire() {
       theater.done = [];
       selected = null; showCenter('welcome');
       hideBanner();
-      addFeed('reset', 'system', '', `Reset — ${r.transactions ?? ''} cases pending`, 'reset');
+      addFeed('reset', 'system', '', `Reset: ${r.transactions ?? ''} cases pending`, 'reset');
       await loadQueue();
       if (DEMO_MODE) {
         // Demo reset returns the QUEUE to its pre-run look (session-scoped; the baked recording
@@ -608,18 +608,18 @@ function initTheme() {
 // ---- guided walkthrough --------------------------------------------------------
 function tourSteps() {
   return [
-    { sel: '#brand', title: 'Welcome to Marshal', body: 'A fraud-investigation console that runs an AI agent over flagged transactions — with vector, full-text, hybrid & graph search, long-term memory, a policy governance layer, and a durable human-approval gate. Every one of those jobs runs on a SINGLE MongoDB Atlas cluster.' },
-    { sel: '#rail', title: 'The capability rail', body: 'Eight MongoDB jobs the industry usually buys as separate systems — a vector DB, a keyword engine, a graph store, a cache, an audit log… Here they are one cluster. Each tile lights up and counts as the agent uses it during a run.' },
+    { sel: '#brand', title: 'Welcome to Marshal', body: 'A fraud-investigation console that runs an AI agent over flagged transactions, with vector, full-text, hybrid & graph search, long-term memory, a policy governance layer, and a durable human-approval gate. Every one of those jobs runs on a SINGLE MongoDB Atlas cluster.' },
+    { sel: '#rail', title: 'The capability rail', body: 'Eight MongoDB jobs the industry usually buys as separate systems: a vector DB, a keyword engine, a graph store, a cache, an audit log… Here they are one cluster. Each tile lights up and counts as the agent uses it during a run.' },
     { sel: '#launchBtn', title: DEMO_MODE ? 'Replay an investigation' : 'Launch an investigation', body: DEMO_MODE
-        ? 'This replays a RECORDED run of the real agent against this cluster — every step you will watch was produced by the live pipeline and captured. Identical for every viewer, no tokens spent twice.'
+        ? 'This replays a RECORDED run of the real agent against this cluster: every step you will watch was produced by the live pipeline and captured. Identical for every viewer, no tokens spent twice.'
         : 'Click this to have the agent investigate every pending case. The center becomes a live theater: each pipeline stage lights up as the corresponding database write lands.' },
     { sel: '#queue', title: 'The case queue', body: `Every flagged transaction, colour-coded by outcome. Click any case to open its full investigation. Cases the agent is unsure about are HELD for you to decide.${corpusTotal ? ` Behind these active cases sits a decided-precedent corpus of ${corpusTotal.toLocaleString()} documents the retrieval runs over.` : ''}` },
-    { sel: '#center', title: 'The investigation theater', body: 'While a run is active this follows the case under the lens: the pipeline fills stage by stage, evidence mounts as it is found, and the verdict stamps down. Afterwards, click any case for the full post-hoc story — including the Approve / Reject gate on held cases.' },
+    { sel: '#center', title: 'The investigation theater', body: 'While a run is active this follows the case under the lens: the pipeline fills stage by stage, evidence mounts as it is found, and the verdict stamps down. Afterwards, click any case for the full post-hoc story, including the Approve / Reject gate on held cases.' },
     { sel: '#feed', title: 'Agent operations feed', body: DEMO_MODE
-        ? 'Every step of the recorded run, replayed in order. In live mode this feed is a pure projection of MongoDB change streams — during a replay it re-plays the captured events and is labeled as such.'
-        : 'A live, icon-tagged trace of what the agent is doing right now — a pure projection of MongoDB change streams. Nothing here is faked client-side; it is the database writes surfacing in real time.' },
-    { sel: '#stats', title: 'The payoff readout', body: 'Real numbers from the cluster: corpus size, decided precedents, policies, median wall-clock per case — and the decision-quality scorecard (fraud recall, F1) measured against the labeled ground truth of every investigated case.' },
-    { sel: '#auditChip', title: 'Tamper-evident audit', body: 'Every decision is written to an HMAC hash-chained audit trail. This chip re-verifies the whole chain — alter any record in the database and the console raises an alarm within seconds.' },
+        ? 'Every step of the recorded run, replayed in order. In live mode this feed is a pure projection of MongoDB change streams; during a replay it re-plays the captured events and is labeled as such.'
+        : 'A live, icon-tagged trace of what the agent is doing right now: a pure projection of MongoDB change streams. Nothing here is faked client-side; it is the database writes surfacing in real time.' },
+    { sel: '#stats', title: 'The payoff readout', body: 'Real numbers from the cluster: corpus size, decided precedents, policies, median wall-clock per case, and the decision-quality scorecard (fraud recall, F1) measured against the labeled ground truth of every investigated case.' },
+    { sel: '#auditChip', title: 'Tamper-evident audit', body: 'Every decision is written to an HMAC hash-chained audit trail. This chip re-verifies the whole chain: alter any record in the database and the console raises an alarm within seconds.' },
   ];
 }
 let tourIx = 0; let TOUR = [];
